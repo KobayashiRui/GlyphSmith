@@ -15,7 +15,7 @@ import type {
 } from "@glyphsmith/ast";
 
 export type Tool = "select" | "rect" | "ellipse" | "triangle" | "path";
-export type PathSegmentMode = "line" | "quadratic" | "cubic" | "arc";
+export type PathSegmentMode = "line" | "quadratic" | "cubic" | "arc" | "catmullRom" | "basis";
 
 export type Viewport = {
   x: number;
@@ -59,6 +59,7 @@ export type EditHandleKind =
   | "path-quadratic-control"
   | "path-cubic-control-1"
   | "path-cubic-control-2"
+  | "path-arc-control"
   | "ellipse-left"
   | "ellipse-top"
   | "ellipse-right"
@@ -185,6 +186,7 @@ export function renderDocument(
   }
 
   if (options.showEditHandles) {
+    drawPathControlGuides(context, document, options.selectedNodeIds ?? [], viewport, pixelRatio);
     drawEditHandles(context, getEditHandles(document, options.selectedNodeIds ?? []), viewport, pixelRatio);
   }
 }
@@ -343,12 +345,17 @@ export function createAppendPathSegmentPatch(
   }
 
   const start = getPathEndPoint(node);
+  const previous = getPathPointBeforeEnd(node);
+  const segments =
+    segmentMode === "catmullRom"
+      ? appendCatmullRomSegment(node, end)
+      : [...node.segments, createSegment(start, end, segmentMode, previous)];
 
   return {
     op: "update",
     target: nodeId,
     changes: {
-      segments: [...node.segments, createSegment(start, end, segmentMode)]
+      segments
     }
   };
 }
@@ -750,13 +757,13 @@ function drawEditHandles(
 ): void {
   context.save();
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
-  context.fillStyle = "#60a5fa";
-  context.strokeStyle = "#0f172a";
   context.lineWidth = 1;
 
   for (const handle of handles) {
     const screenPoint = worldToScreen(handle.point, viewport);
 
+    context.fillStyle = isPathControlHandleKind(handle.kind) ? "#fecdd3" : "#60a5fa";
+    context.strokeStyle = isPathControlHandleKind(handle.kind) ? "#ef4444" : "#0f172a";
     context.beginPath();
     context.rect(screenPoint.x - 4, screenPoint.y - 4, 8, 8);
     context.fill();
@@ -764,6 +771,72 @@ function drawEditHandles(
   }
 
   context.restore();
+}
+
+function isPathControlHandleKind(kind: EditHandleKind): boolean {
+  return (
+    kind === "path-quadratic-control" ||
+    kind === "path-cubic-control-1" ||
+    kind === "path-cubic-control-2" ||
+    kind === "path-arc-control"
+  );
+}
+
+function drawPathControlGuides(
+  context: CanvasRenderingContext2D,
+  document: GeometryDocument,
+  nodeIds: NodeId[],
+  viewport: Viewport,
+  pixelRatio: number
+): void {
+  context.save();
+  context.setTransform(
+    viewport.zoom * pixelRatio,
+    0,
+    0,
+    viewport.zoom * pixelRatio,
+    viewport.x * pixelRatio,
+    viewport.y * pixelRatio
+  );
+  context.strokeStyle = "#fb7185";
+  context.lineWidth = 1 / viewport.zoom;
+
+  for (const nodeId of nodeIds) {
+    const node = findNodeInTree(document.root, nodeId);
+
+    if (!node || node.type !== "path") {
+      continue;
+    }
+
+    let current = node.start;
+
+    for (const segment of node.segments) {
+      if (segment.type === "quadratic") {
+        drawGuideLine(context, current, segment.control);
+        drawGuideLine(context, segment.to, segment.control);
+      }
+
+      if (segment.type === "cubic") {
+        drawGuideLine(context, current, segment.control1);
+        drawGuideLine(context, segment.to, segment.control2);
+      }
+
+      if (segment.type === "arc") {
+        drawGuideLine(context, lerpPoint(current, segment.to, 0.5), arcControlPoint(current, segment));
+      }
+
+      current = segment.to;
+    }
+  }
+
+  context.restore();
+}
+
+function drawGuideLine(context: CanvasRenderingContext2D, start: Point, end: Point): void {
+  context.beginPath();
+  context.moveTo(start.x, start.y);
+  context.lineTo(end.x, end.y);
+  context.stroke();
 }
 
 function hitTestNode(
@@ -887,6 +960,8 @@ function handlesForNode(node: GeometryNode): EditHandle[] {
       }))
     ];
 
+    let current = node.start;
+
     node.segments.forEach((segment, segmentIndex) => {
       if (segment.type === "quadratic") {
         handles.push({
@@ -913,6 +988,17 @@ function handlesForNode(node: GeometryNode): EditHandle[] {
           }
         );
       }
+
+      if (segment.type === "arc") {
+        handles.push({
+          nodeId: node.id,
+          kind: "path-arc-control",
+          point: arcControlPoint(current, segment),
+          segmentIndex
+        });
+      }
+
+      current = segment.to;
     });
 
     return handles;
@@ -1210,23 +1296,48 @@ function createPathHandleUpdatePatch(
   point: Point
 ): UpdatePatch | undefined {
   if (handle.kind === "path-start") {
+    const delta = pointDelta(node.start, point);
+
     return {
       op: "update",
       target: node.id,
       changes: {
-        start: point
+        start: point,
+        segments: node.segments.map((segment, segmentIndex) =>
+          segmentIndex === 0 ? translateSegmentStartControl(segment, delta) : segment
+        )
       }
     };
   }
 
   if (handle.kind === "path-segment-end" && handle.segmentIndex !== undefined) {
+    const movedSegmentIndex = handle.segmentIndex;
+    const currentSegment = node.segments[movedSegmentIndex];
+
+    if (!currentSegment) {
+      return undefined;
+    }
+
+    const delta = pointDelta(currentSegment.to, point);
+
     return {
       op: "update",
       target: node.id,
       changes: {
-        segments: node.segments.map((segment, segmentIndex) =>
-          segmentIndex === handle.segmentIndex ? { ...segment, to: point } : segment
-        )
+        segments: node.segments.map((segment, segmentIndex) => {
+          if (segmentIndex === movedSegmentIndex) {
+            return {
+              ...translateSegmentEndControl(segment, delta),
+              to: point
+            };
+          }
+
+          if (segmentIndex === movedSegmentIndex + 1) {
+            return translateSegmentStartControl(segment, delta);
+          }
+
+          return segment;
+        })
       }
     };
   }
@@ -1253,6 +1364,12 @@ function createPathHandleUpdatePatch(
             return { ...segment, control2: point };
           }
 
+          if (handle.kind === "path-arc-control" && segment.type === "arc") {
+            const start = segmentIndex === 0 ? node.start : node.segments[segmentIndex - 1]?.to ?? node.start;
+
+            return updateArcSegmentFromControl(start, segment, point);
+          }
+
           return segment;
         })
       }
@@ -1260,6 +1377,42 @@ function createPathHandleUpdatePatch(
   }
 
   return undefined;
+}
+
+function pointDelta(from: Point, to: Point): Point {
+  return {
+    x: to.x - from.x,
+    y: to.y - from.y
+  };
+}
+
+function translatePoint(point: Point, delta: Point): Point {
+  return {
+    x: point.x + delta.x,
+    y: point.y + delta.y
+  };
+}
+
+function translateSegmentStartControl(segment: Segment, delta: Point): Segment {
+  if (segment.type === "cubic") {
+    return {
+      ...segment,
+      control1: translatePoint(segment.control1, delta)
+    };
+  }
+
+  return segment;
+}
+
+function translateSegmentEndControl(segment: Segment, delta: Point): Segment {
+  if (segment.type === "cubic") {
+    return {
+      ...segment,
+      control2: translatePoint(segment.control2, delta)
+    };
+  }
+
+  return segment;
 }
 
 function createEllipseHandleUpdatePatch(
@@ -1311,7 +1464,7 @@ function createPolygonHandleUpdatePatch(
   };
 }
 
-function createSegment(start: Point, end: Point, mode: PathSegmentMode): Segment {
+function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous?: Point): Segment {
   switch (mode) {
     case "quadratic":
       return {
@@ -1336,6 +1489,10 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode): Segment
         sweep: true,
         to: end
       };
+    case "catmullRom":
+      return createCatmullRomCubicSegment(previous ?? start, start, end);
+    case "basis":
+      return createBasisCubicSegment(previous ?? start, start, end);
     case "line":
       return {
         type: "line",
@@ -1346,6 +1503,119 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode): Segment
 
 function getPathEndPoint(node: PathNode): Point {
   return node.segments.at(-1)?.to ?? node.start;
+}
+
+function getPathPointBeforeEnd(node: PathNode): Point {
+  if (node.segments.length < 2) {
+    return node.start;
+  }
+
+  return node.segments[node.segments.length - 2]?.to ?? node.start;
+}
+
+function appendCatmullRomSegment(node: PathNode, end: Point): Segment[] {
+  const points = [node.start, ...node.segments.map((segment) => segment.to)];
+  const start = points.at(-1) ?? node.start;
+  const previous = points.at(-2) ?? start;
+  const nextSegments = [...node.segments];
+  const lastSegment = nextSegments.at(-1);
+
+  if (lastSegment?.type === "cubic") {
+    nextSegments[nextSegments.length - 1] = {
+      ...lastSegment,
+      control2: catmullRomControl2(previous, lastSegment.to, end)
+    };
+  }
+
+  nextSegments.push(createCatmullRomCubicSegment(previous, start, end));
+
+  return nextSegments;
+}
+
+function createCatmullRomCubicSegment(
+  previous: Point,
+  start: Point,
+  end: Point
+): Extract<Segment, { type: "cubic" }> {
+  return {
+    type: "cubic",
+    control1: catmullRomControl1(previous, start, end),
+    control2: catmullRomControl2(start, end, end),
+    to: end
+  };
+}
+
+function catmullRomControl1(previous: Point, start: Point, end: Point): Point {
+  return {
+    x: start.x + (end.x - previous.x) / 6,
+    y: start.y + (end.y - previous.y) / 6
+  };
+}
+
+function catmullRomControl2(start: Point, end: Point, next: Point): Point {
+  return {
+    x: end.x - (next.x - start.x) / 6,
+    y: end.y - (next.y - start.y) / 6
+  };
+}
+
+function createBasisCubicSegment(previous: Point, start: Point, end: Point): Extract<Segment, { type: "cubic" }> {
+  const softenedStart = lerpPoint(start, end, 1 / 3);
+  const softenedEnd = lerpPoint(start, end, 2 / 3);
+
+  return {
+    type: "cubic",
+    control1: {
+      x: (start.x * 2 + softenedStart.x + previous.x * 0.15) / 3.15,
+      y: (start.y * 2 + softenedStart.y + previous.y * 0.15) / 3.15
+    },
+    control2: softenedEnd,
+    to: end
+  };
+}
+
+function arcControlPoint(start: Point, segment: Extract<Segment, { type: "arc" }>): Point {
+  const end = segment.to;
+  const mid = lerpPoint(start, end, 0.5);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.max(Math.hypot(dx, dy), 0.001);
+  const radius = Math.max(segment.rx, segment.ry, length / 2);
+  const sagitta = Math.max(12, Math.min(radius, radius - Math.sqrt(Math.max(0, radius * radius - (length / 2) ** 2))));
+  const direction = segment.sweep ? 1 : -1;
+
+  return {
+    x: mid.x + (-dy / length) * sagitta * direction,
+    y: mid.y + (dx / length) * sagitta * direction
+  };
+}
+
+function updateArcSegmentFromControl(
+  start: Point,
+  segment: Extract<Segment, { type: "arc" }>,
+  control: Point
+): Extract<Segment, { type: "arc" }> {
+  const end = segment.to;
+  const mid = lerpPoint(start, end, 0.5);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const chordLength = Math.max(Math.hypot(dx, dy), 0.001);
+  const normal = {
+    x: -dy / chordLength,
+    y: dx / chordLength
+  };
+  const signedSagitta = (control.x - mid.x) * normal.x + (control.y - mid.y) * normal.y;
+  const sagitta = Math.max(1, Math.abs(signedSagitta));
+  const radius = (chordLength * chordLength) / (8 * sagitta) + sagitta / 2;
+
+  return {
+    ...segment,
+    rx: Math.max(1, radius),
+    ry: Math.max(1, radius),
+    xAxisRotation: 0,
+    largeArc: sagitta > radius,
+    sweep: signedSagitta >= 0
+  };
 }
 
 function lerpPoint(start: Point, end: Point, amount: number): Point {

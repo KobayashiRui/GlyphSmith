@@ -5,11 +5,14 @@
 		type GeometryNode,
 		type NodeId,
 		type NodeStyle,
+		type PathNode,
 		type Point
 	} from '@glyphsmith/ast';
 	import {
+		createAppendPathSegmentPatch,
 		createEllipseInsertPatch,
 		createLinePathInsertPatch,
+		createPathClosedUpdatePatch,
 		createRectInsertPatch,
 		createTriangleInsertPatch,
 		createEditHandleUpdatePatch,
@@ -42,6 +45,7 @@
 	let selectedNodeIds = $state<NodeId[]>([]);
 	let tool = $state<Tool>('select');
 	let pathSegmentMode = $state<PathSegmentMode>('line');
+	let activePathNodeId = $state<NodeId | undefined>();
 	let viewport = $state<Viewport>({ x: 80, y: 56, zoom: 1 });
 	let draftStart = $state<Point | undefined>();
 	let draftEnd = $state<Point | undefined>();
@@ -69,6 +73,7 @@
 		geometryDocument;
 		selectedNodeIds;
 		tool;
+		activePathNodeId;
 		draftStart;
 		draftEnd;
 		shapePreviewPoint;
@@ -110,7 +115,7 @@
 				event.preventDefault();
 				editingHandle = undefined;
 				dragging = false;
-				cancelDraft();
+				finishPathDrawing();
 			}
 
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
@@ -154,6 +159,7 @@
 		draftStart = undefined;
 		draftEnd = undefined;
 		shapePreviewPoint = undefined;
+		activePathNodeId = undefined;
 		dragging = false;
 		editingHandle = undefined;
 		panning = false;
@@ -162,13 +168,16 @@
 
 	function setLineTool(mode: PathSegmentMode) {
 		pathSegmentMode = mode;
-		setTool('path');
+
+		if (tool !== 'path') {
+			setTool('path');
+		}
 	}
 
 	function handlePointerDown(event: PointerEvent) {
 		const screenPoint = pointerToScreen(event);
 		const rawWorldPoint = pointerToWorld(event);
-		const worldPoint = tool === 'select' ? rawWorldPoint : snapWorldPoint(rawWorldPoint);
+		const worldPoint = tool === 'select' || isShapeTool(tool) ? rawWorldPoint : snapWorldPoint(rawWorldPoint);
 
 		canvas.setPointerCapture(event.pointerId);
 
@@ -218,21 +227,16 @@
 			return;
 		}
 
-		if (draftStart) {
-			draftEnd = worldPoint;
-			confirmPathDraft();
+		if (tool === 'path') {
+			handlePathPointerDown(worldPoint);
 			return;
 		}
-
-		selectedNodeIds = [];
-		draftStart = worldPoint;
-		draftEnd = worldPoint;
 	}
 
 	function handlePointerMove(event: PointerEvent) {
 		const screenPoint = pointerToScreen(event);
 		const rawWorldPoint = pointerToWorld(event);
-		const worldPoint = draftStart && tool !== 'select' ? snapWorldPoint(rawWorldPoint) : rawWorldPoint;
+		const worldPoint = tool === 'path' || (draftStart && tool !== 'select') ? snapWorldPoint(rawWorldPoint) : rawWorldPoint;
 
 		if (panning && lastPanPoint) {
 			shapePreviewPoint = undefined;
@@ -377,9 +381,157 @@
 
 			commitPatch(patch);
 			selectedNodeIds = [pathId];
+			activePathNodeId = pathId;
 			nextNodeIndex += 1;
-			cancelDraft();
+			draftStart = draftEnd;
+			draftEnd = draftEnd;
 		}
+	}
+
+	function handlePathPointerDown(point: Point) {
+		if (!draftStart) {
+			const existingPathStart = getAppendablePathStart(point);
+
+			if (existingPathStart) {
+				activePathNodeId = existingPathStart.nodeId;
+				selectedNodeIds = [existingPathStart.nodeId];
+				draftStart = existingPathStart.point;
+				draftEnd = existingPathStart.point;
+				return;
+			}
+
+			selectedNodeIds = [];
+			activePathNodeId = undefined;
+			draftStart = point;
+			draftEnd = point;
+			return;
+		}
+
+		draftEnd = point;
+
+		if (activePathNodeId) {
+			appendPathSegment(point);
+			return;
+		}
+
+		confirmPathDraft();
+	}
+
+	function appendPathSegment(point: Point) {
+		if (!activePathNodeId || !draftStart) {
+			return;
+		}
+
+		if (isPointOnActivePathStart(point)) {
+			closeActivePath();
+			return;
+		}
+
+		const distance = Math.hypot(point.x - draftStart.x, point.y - draftStart.y);
+
+		if (distance <= 2 / viewport.zoom) {
+			return;
+		}
+
+		const patch = createAppendPathSegmentPatch(
+			geometryDocument,
+			activePathNodeId,
+			point,
+			pathSegmentMode
+		);
+
+		if (!patch) {
+			finishPathDrawing();
+			return;
+		}
+
+		commitPatch(patch);
+		selectedNodeIds = [activePathNodeId];
+		draftStart = point;
+		draftEnd = point;
+	}
+
+	function closeActivePath() {
+		if (!activePathNodeId) {
+			return;
+		}
+
+		const patch = createPathClosedUpdatePatch(geometryDocument, activePathNodeId, true);
+
+		if (!patch) {
+			finishPathDrawing();
+			return;
+		}
+
+		commitPatch(patch);
+		selectedNodeIds = [activePathNodeId];
+		finishPathDrawing();
+	}
+
+	function getAppendablePathStart(point: Point): { nodeId: NodeId; point: Point } | undefined {
+		if (!snapTarget || !pointsEqual(snapTarget.point, point)) {
+			return undefined;
+		}
+
+		const node = findNode(geometryDocument, snapTarget.nodeId);
+
+		if (!isPathNode(node) || node.closed) {
+			return undefined;
+		}
+
+		const endPoint = getPathEndPoint(node);
+
+		if (!pointsEqual(point, endPoint)) {
+			return undefined;
+		}
+
+		return {
+			nodeId: node.id,
+			point: endPoint
+		};
+	}
+
+	function isPointOnActivePathStart(point: Point): boolean {
+		if (!activePathNodeId || !snapTarget || snapTarget.nodeId !== activePathNodeId) {
+			return false;
+		}
+
+		const node = findNode(geometryDocument, activePathNodeId);
+
+		return isPathNode(node) && pointsEqual(point, node.start);
+	}
+
+	function isPathNode(node: GeometryNode | undefined): node is PathNode {
+		return Boolean(node && node.type === 'path');
+	}
+
+	function getPathEndPoint(node: PathNode): Point {
+		return node.segments.at(-1)?.to ?? node.start;
+	}
+
+	function pointsEqual(a: Point, b: Point): boolean {
+		return Math.abs(a.x - b.x) < 0.001 && Math.abs(a.y - b.y) < 0.001;
+	}
+
+	function catmullControl1(previous: Point, start: Point, end: Point): Point {
+		return {
+			x: start.x + (end.x - previous.x) / 6,
+			y: start.y + (end.y - previous.y) / 6
+		};
+	}
+
+	function catmullControl2(start: Point, end: Point, next: Point): Point {
+		return {
+			x: end.x - (next.x - start.x) / 6,
+			y: end.y - (next.y - start.y) / 6
+		};
+	}
+
+	function finishPathDrawing() {
+		activePathNodeId = undefined;
+		editingHandle = undefined;
+		dragging = false;
+		cancelDraft();
 	}
 
 	function cancelDraft() {
@@ -608,7 +760,70 @@
 		});
 
 		drawShapePreview(context);
+		drawCatmullRomCandidate(context);
 		drawDraft(context);
+		drawSnapTarget(context);
+	}
+
+	function drawCatmullRomCandidate(canvasContext: CanvasRenderingContext2D) {
+		if (tool !== 'path' || pathSegmentMode !== 'catmullRom' || !activePathNodeId || !draftStart || !draftEnd) {
+			return;
+		}
+
+		const node = findNode(geometryDocument, activePathNodeId);
+
+		if (!isPathNode(node) || node.segments.length === 0) {
+			return;
+		}
+
+		const points = [node.start, ...node.segments.map((segment) => segment.to)];
+		const start = points.at(-1);
+		const previous = points.at(-2);
+		const beforePrevious = points.at(-3) ?? previous;
+		const lastSegment = node.segments.at(-1);
+
+		if (!start || !previous || !beforePrevious || !lastSegment || lastSegment.type !== 'cubic') {
+			return;
+		}
+
+		canvasContext.save();
+		canvasContext.setTransform(
+			viewport.zoom * canvasPixelRatio,
+			0,
+			0,
+			viewport.zoom * canvasPixelRatio,
+			viewport.x * canvasPixelRatio,
+			viewport.y * canvasPixelRatio
+		);
+		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.lineWidth = 2 / viewport.zoom;
+		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
+
+		const adjustedPreviousControl1 = catmullControl1(beforePrevious, previous, start);
+		const adjustedPreviousControl2 = catmullControl2(previous, start, draftEnd);
+		const nextControl1 = catmullControl1(previous, start, draftEnd);
+		const nextControl2 = catmullControl2(start, draftEnd, draftEnd);
+
+		canvasContext.beginPath();
+		canvasContext.moveTo(previous.x, previous.y);
+		canvasContext.bezierCurveTo(
+			adjustedPreviousControl1.x,
+			adjustedPreviousControl1.y,
+			adjustedPreviousControl2.x,
+			adjustedPreviousControl2.y,
+			start.x,
+			start.y
+		);
+		canvasContext.bezierCurveTo(
+			nextControl1.x,
+			nextControl1.y,
+			nextControl2.x,
+			nextControl2.y,
+			draftEnd.x,
+			draftEnd.y
+		);
+		canvasContext.stroke();
+		canvasContext.restore();
 	}
 
 	function drawShapePreview(canvasContext: CanvasRenderingContext2D) {
@@ -689,6 +904,10 @@
 			return;
 		}
 
+		if (tool === 'path' && pathSegmentMode === 'catmullRom' && activePathNodeId) {
+			return;
+		}
+
 		canvasContext.save();
 		canvasContext.setTransform(
 			viewport.zoom * canvasPixelRatio,
@@ -764,13 +983,28 @@
 		drawDraftHandle(canvasContext, draftStart);
 		drawDraftHandle(canvasContext, draftEnd);
 
-		if (snapTarget) {
-			canvasContext.strokeStyle = '#facc15';
-			canvasContext.lineWidth = 2 / viewport.zoom;
-			canvasContext.beginPath();
-			canvasContext.arc(snapTarget.point.x, snapTarget.point.y, 7 / viewport.zoom, 0, Math.PI * 2);
-			canvasContext.stroke();
+		canvasContext.restore();
+	}
+
+	function drawSnapTarget(canvasContext: CanvasRenderingContext2D) {
+		if (!snapTarget) {
+			return;
 		}
+
+		canvasContext.save();
+		canvasContext.setTransform(
+			viewport.zoom * canvasPixelRatio,
+			0,
+			0,
+			viewport.zoom * canvasPixelRatio,
+			viewport.x * canvasPixelRatio,
+			viewport.y * canvasPixelRatio
+		);
+		canvasContext.strokeStyle = '#facc15';
+		canvasContext.lineWidth = 2 / viewport.zoom;
+		canvasContext.beginPath();
+		canvasContext.arc(snapTarget.point.x, snapTarget.point.y, 7 / viewport.zoom, 0, Math.PI * 2);
+		canvasContext.stroke();
 		canvasContext.restore();
 	}
 
@@ -790,12 +1024,14 @@
 				y: (start.y + end.y) / 2 + (end.x - start.x) * -0.35
 			};
 			canvasContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
-		} else if (pathSegmentMode === 'cubic') {
+		} else if (pathSegmentMode === 'cubic' || pathSegmentMode === 'catmullRom' || pathSegmentMode === 'basis') {
+			const curveBias = pathSegmentMode === 'basis' ? 0.25 : 0;
+
 			canvasContext.bezierCurveTo(
 				start.x + (end.x - start.x) / 3,
-				start.y + (end.y - start.y) / 3,
+				start.y + (end.y - start.y) / 3 - (end.x - start.x) * curveBias,
 				start.x + ((end.x - start.x) * 2) / 3,
-				start.y + ((end.y - start.y) * 2) / 3,
+				start.y + ((end.y - start.y) * 2) / 3 + (end.x - start.x) * curveBias,
 				end.x,
 				end.y
 			);
@@ -827,9 +1063,10 @@
 			<button class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')}>Ellipse</button>
 			<button class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>Triangle</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>Line</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'quadratic'} type="button" onclick={() => setLineTool('quadratic')}>Quadratic</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Bezier</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>Arc</button>
+			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Bezier</button>
+			<button class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')}>Catmull</button>
+			<button class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')}>Basis</button>
 		</div>
 
 		<div class="topbar-status">
