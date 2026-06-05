@@ -735,6 +735,10 @@
 		});
 	}
 
+	function colorPickerValue(value: string | undefined, fallback: string): string {
+		return /^#[\da-f]{6}$/i.test(value ?? '') ? (value as string) : fallback;
+	}
+
 	function downloadSvg() {
 		const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
 		const url = URL.createObjectURL(blob);
@@ -1276,20 +1280,39 @@
 				{#if selectedNode}
 					<div class="field-grid">
 						<label for="fill">Fill</label>
-						<input
-							id="fill"
-							class="text-field"
-							value={selectedNode.style?.fill ?? 'none'}
-							onchange={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
-						/>
+						<div class="paint-field">
+							<input
+								aria-label="Fill color"
+								class="color-field"
+								type="color"
+								value={colorPickerValue(selectedNode.style?.fill, '#3b82f6')}
+								oninput={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
+							/>
+							<input
+								id="fill"
+								class="text-field"
+								value={selectedNode.style?.fill ?? 'none'}
+								onchange={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
+							/>
+							<button class="inline-button" type="button" onclick={() => updateSelectedStyle('fill', 'none')}>None</button>
+						</div>
 
 						<label for="stroke">Stroke</label>
-						<input
-							id="stroke"
-							class="text-field"
-							value={selectedNode.style?.stroke ?? '#111827'}
-							onchange={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
-						/>
+						<div class="paint-field">
+							<input
+								aria-label="Stroke color"
+								class="color-field"
+								type="color"
+								value={colorPickerValue(selectedNode.style?.stroke, '#111827')}
+								oninput={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
+							/>
+							<input
+								id="stroke"
+								class="text-field"
+								value={selectedNode.style?.stroke ?? '#111827'}
+								onchange={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
+							/>
+						</div>
 
 						<label for="stroke-width">Stroke W</label>
 						<input
