@@ -6,10 +6,13 @@
 		type NodeId,
 		type NodeStyle,
 		type PathNode,
-		type Point
+		type Point,
+		type Segment
 	} from '@glyphsmith/ast';
 	import {
 		createAppendPathSegmentPatch,
+		createBasisSplinePathGeometry,
+		createCubicBezierSegment,
 		createEllipseInsertPatch,
 		createLinePathInsertPatch,
 		createPathClosedUpdatePatch,
@@ -761,6 +764,8 @@
 
 		drawShapePreview(context);
 		drawCatmullRomCandidate(context);
+		drawBasisSplineCandidate(context);
+		drawCubicBezierCandidate(context);
 		drawDraft(context);
 		drawSnapTarget(context);
 	}
@@ -823,6 +828,66 @@
 			draftEnd.y
 		);
 		canvasContext.stroke();
+		canvasContext.restore();
+	}
+
+	function drawBasisSplineCandidate(canvasContext: CanvasRenderingContext2D) {
+		if (tool !== 'path' || pathSegmentMode !== 'basis' || !activePathNodeId || !draftEnd) {
+			return;
+		}
+
+		const node = findNode(geometryDocument, activePathNodeId);
+
+		if (!isPathNode(node) || node.spline?.type !== 'basis') {
+			return;
+		}
+
+		const candidate = createBasisSplinePathGeometry([...node.spline.points, draftEnd]);
+
+		canvasContext.save();
+		canvasContext.setTransform(
+			viewport.zoom * canvasPixelRatio,
+			0,
+			0,
+			viewport.zoom * canvasPixelRatio,
+			viewport.x * canvasPixelRatio,
+			viewport.y * canvasPixelRatio
+		);
+		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.lineWidth = 2 / viewport.zoom;
+		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
+		drawPathGeometry(canvasContext, candidate.start, candidate.segments);
+		canvasContext.restore();
+	}
+
+	function drawCubicBezierCandidate(canvasContext: CanvasRenderingContext2D) {
+		if (tool !== 'path' || pathSegmentMode !== 'cubic' || !activePathNodeId || !draftEnd) {
+			return;
+		}
+
+		const node = findNode(geometryDocument, activePathNodeId);
+
+		if (!isPathNode(node) || node.segments.length === 0) {
+			return;
+		}
+
+		const start = getPathEndPoint(node);
+		const previous = node.segments.length < 2 ? node.start : node.segments[node.segments.length - 2]?.to ?? node.start;
+		const segment = createCubicBezierSegment(previous, start, draftEnd);
+
+		canvasContext.save();
+		canvasContext.setTransform(
+			viewport.zoom * canvasPixelRatio,
+			0,
+			0,
+			viewport.zoom * canvasPixelRatio,
+			viewport.x * canvasPixelRatio,
+			viewport.y * canvasPixelRatio
+		);
+		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.lineWidth = 2 / viewport.zoom;
+		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
+		drawPathGeometry(canvasContext, start, [segment]);
 		canvasContext.restore();
 	}
 
@@ -905,6 +970,14 @@
 		}
 
 		if (tool === 'path' && pathSegmentMode === 'catmullRom' && activePathNodeId) {
+			return;
+		}
+
+		if (tool === 'path' && pathSegmentMode === 'basis' && activePathNodeId) {
+			return;
+		}
+
+		if (tool === 'path' && pathSegmentMode === 'cubic' && activePathNodeId) {
 			return;
 		}
 
@@ -1015,6 +1088,12 @@
 	}
 
 	function drawPathDraftSegment(canvasContext: CanvasRenderingContext2D, start: Point, end: Point) {
+		if (pathSegmentMode === 'basis') {
+			const geometry = createBasisSplinePathGeometry([start, end]);
+			drawPathGeometry(canvasContext, geometry.start, geometry.segments);
+			return;
+		}
+
 		canvasContext.beginPath();
 		canvasContext.moveTo(start.x, start.y);
 
@@ -1024,19 +1103,43 @@
 				y: (start.y + end.y) / 2 + (end.x - start.x) * -0.35
 			};
 			canvasContext.quadraticCurveTo(control.x, control.y, end.x, end.y);
-		} else if (pathSegmentMode === 'cubic' || pathSegmentMode === 'catmullRom' || pathSegmentMode === 'basis') {
-			const curveBias = pathSegmentMode === 'basis' ? 0.25 : 0;
-
+		} else if (pathSegmentMode === 'cubic' || pathSegmentMode === 'catmullRom') {
 			canvasContext.bezierCurveTo(
 				start.x + (end.x - start.x) / 3,
-				start.y + (end.y - start.y) / 3 - (end.x - start.x) * curveBias,
+				start.y + (end.y - start.y) / 3,
 				start.x + ((end.x - start.x) * 2) / 3,
-				start.y + ((end.y - start.y) * 2) / 3 + (end.x - start.x) * curveBias,
+				start.y + ((end.y - start.y) * 2) / 3,
 				end.x,
 				end.y
 			);
 		} else {
 			canvasContext.lineTo(end.x, end.y);
+		}
+
+		canvasContext.stroke();
+	}
+
+	function drawPathGeometry(canvasContext: CanvasRenderingContext2D, start: Point, segments: Segment[]) {
+		canvasContext.beginPath();
+		canvasContext.moveTo(start.x, start.y);
+
+		for (const segment of segments) {
+			if (segment.type === 'line') {
+				canvasContext.lineTo(segment.to.x, segment.to.y);
+			} else if (segment.type === 'quadratic') {
+				canvasContext.quadraticCurveTo(segment.control.x, segment.control.y, segment.to.x, segment.to.y);
+			} else if (segment.type === 'cubic') {
+				canvasContext.bezierCurveTo(
+					segment.control1.x,
+					segment.control1.y,
+					segment.control2.x,
+					segment.control2.y,
+					segment.to.x,
+					segment.to.y
+				);
+			} else {
+				canvasContext.lineTo(segment.to.x, segment.to.y);
+			}
 		}
 
 		canvasContext.stroke();
@@ -1064,7 +1167,7 @@
 			<button class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>Triangle</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>Line</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>Arc</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Bezier</button>
+			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Cubic Bezier</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')}>Catmull</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')}>Basis</button>
 		</div>

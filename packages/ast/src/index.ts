@@ -107,11 +107,17 @@ export type ArcSegment = {
 
 export type Segment = LineSegment | CubicBezierSegment | QuadraticBezierSegment | ArcSegment;
 
+export type PathSpline = {
+  type: "basis";
+  points: Point[];
+};
+
 export type PathNode = BaseNode & {
   type: "path";
   start: Point;
   closed: boolean;
   segments: Segment[];
+  spline?: PathSpline;
 };
 
 export type GeometryNode =

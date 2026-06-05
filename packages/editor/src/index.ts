@@ -7,6 +7,7 @@ import type {
   NodeId,
   NodeStyle,
   PathNode,
+  PathSpline,
   Point,
   PolygonNode,
   RectNode,
@@ -56,6 +57,7 @@ export type EditHandleKind =
   | "line-end"
   | "path-start"
   | "path-segment-end"
+  | "path-spline-point"
   | "path-quadratic-control"
   | "path-cubic-control-1"
   | "path-cubic-control-2"
@@ -317,6 +319,10 @@ export function createLinePathInsertPatch(input: {
   segmentMode?: PathSegmentMode;
   style?: NodeStyle;
 }): InsertPatch {
+  const segmentMode = input.segmentMode ?? "line";
+  const basisGeometry =
+    segmentMode === "basis" ? createBasisSplinePathGeometry([input.start, input.end]) : undefined;
+
   return {
     op: "insert",
     parentId: input.parentId ?? "root",
@@ -324,9 +330,10 @@ export function createLinePathInsertPatch(input: {
       id: input.id,
       type: "path",
       name: "Path",
-      start: input.start,
+      start: basisGeometry?.start ?? input.start,
       closed: false,
-      segments: [createSegment(input.start, input.end, input.segmentMode ?? "line")],
+      segments: basisGeometry?.segments ?? [createSegment(input.start, input.end, segmentMode)],
+      spline: basisGeometry?.spline,
       style: input.style ?? defaultStyle
     }
   };
@@ -342,6 +349,16 @@ export function createAppendPathSegmentPatch(
 
   if (!node || node.type !== "path") {
     return undefined;
+  }
+
+  if (segmentMode === "basis") {
+    const basisGeometry = createBasisSplinePathGeometry([...getBasisControlPoints(node), end]);
+
+    return {
+      op: "update",
+      target: nodeId,
+      changes: basisGeometry
+    };
   }
 
   const start = getPathEndPoint(node);
@@ -808,6 +825,11 @@ function drawPathControlGuides(
       continue;
     }
 
+    if (node.spline?.type === "basis") {
+      drawBasisControlPolygon(context, node.spline.points);
+      continue;
+    }
+
     let current = node.start;
 
     for (const segment of node.segments) {
@@ -837,6 +859,17 @@ function drawGuideLine(context: CanvasRenderingContext2D, start: Point, end: Poi
   context.moveTo(start.x, start.y);
   context.lineTo(end.x, end.y);
   context.stroke();
+}
+
+function drawBasisControlPolygon(context: CanvasRenderingContext2D, points: Point[]): void {
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const start = points[index];
+    const end = points[index + 1];
+
+    if (start && end) {
+      drawGuideLine(context, start, end);
+    }
+  }
 }
 
 function hitTestNode(
@@ -950,6 +983,15 @@ function handlesForNode(node: GeometryNode): EditHandle[] {
   }
 
   if (node.type === "path") {
+    if (node.spline?.type === "basis") {
+      return node.spline.points.map((point, pointIndex) => ({
+        nodeId: node.id,
+        kind: "path-spline-point",
+        point,
+        pointIndex
+      }));
+    }
+
     const handles: EditHandle[] = [
       { nodeId: node.id, kind: "path-start", point: node.start },
       ...node.segments.map((segment, segmentIndex) => ({
@@ -1295,6 +1337,18 @@ function createPathHandleUpdatePatch(
   handle: EditHandle,
   point: Point
 ): UpdatePatch | undefined {
+  if (handle.kind === "path-spline-point" && node.spline?.type === "basis" && handle.pointIndex !== undefined) {
+    const points = node.spline.points.map((currentPoint, pointIndex) =>
+      pointIndex === handle.pointIndex ? point : currentPoint
+    );
+
+    return {
+      op: "update",
+      target: node.id,
+      changes: createBasisSplinePathGeometry(points)
+    };
+  }
+
   if (handle.kind === "path-start") {
     const delta = pointDelta(node.start, point);
 
@@ -1473,12 +1527,7 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous
         to: end
       };
     case "cubic":
-      return {
-        type: "cubic",
-        control1: lerpPoint(start, end, 1 / 3),
-        control2: lerpPoint(start, end, 2 / 3),
-        to: end
-      };
+      return createCubicBezierSegment(previous ?? start, start, end);
     case "arc":
       return {
         type: "arc",
@@ -1492,7 +1541,10 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous
     case "catmullRom":
       return createCatmullRomCubicSegment(previous ?? start, start, end);
     case "basis":
-      return createBasisCubicSegment(previous ?? start, start, end);
+      return createBasisSplinePathGeometry([start, end]).segments.at(-1) ?? {
+        type: "line",
+        to: end
+      };
     case "line":
       return {
         type: "line",
@@ -1503,6 +1555,101 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous
 
 function getPathEndPoint(node: PathNode): Point {
   return node.segments.at(-1)?.to ?? node.start;
+}
+
+export function createBasisSplinePathGeometry(points: Point[]): {
+  start: Point;
+  segments: Segment[];
+  spline: PathSpline;
+} {
+  const fallbackPoint = { x: 0, y: 0 };
+  const controlPoints = points.length > 0 ? points.map(copyPoint) : [fallbackPoint];
+
+  if (controlPoints.length === 1) {
+    return {
+      start: copyPoint(controlPoints[0] ?? fallbackPoint),
+      segments: [],
+      spline: {
+        type: "basis",
+        points: controlPoints
+      }
+    };
+  }
+
+  const first = controlPoints[0] ?? fallbackPoint;
+  const last = controlPoints.at(-1) ?? first;
+  const paddedPoints = [first, first, ...controlPoints, last, last];
+  const segments: Segment[] = [];
+  let start = copyPoint(first);
+
+  for (let index = 0; index <= paddedPoints.length - 4; index += 1) {
+    const p0 = paddedPoints[index];
+    const p1 = paddedPoints[index + 1];
+    const p2 = paddedPoints[index + 2];
+    const p3 = paddedPoints[index + 3];
+
+    if (!p0 || !p1 || !p2 || !p3) {
+      continue;
+    }
+
+    segments.push({
+      type: "cubic",
+      control1: weightedPoint([
+        [p1, 4],
+        [p2, 2]
+      ]),
+      control2: weightedPoint([
+        [p1, 2],
+        [p2, 4]
+      ]),
+      to: basisBezierPoint(p1, p2, p3)
+    });
+  }
+
+  if (segments.length === 0) {
+    start = copyPoint(first);
+  }
+
+  return {
+    start,
+    segments,
+    spline: {
+      type: "basis",
+      points: controlPoints
+    }
+  };
+}
+
+function getBasisControlPoints(node: PathNode): Point[] {
+  if (node.spline?.type === "basis") {
+    return node.spline.points;
+  }
+
+  return [node.start, ...node.segments.map((segment) => segment.to)];
+}
+
+function basisBezierPoint(p0: Point, p1: Point, p2: Point): Point {
+  return weightedPoint([
+    [p0, 1],
+    [p1, 4],
+    [p2, 1]
+  ]);
+}
+
+function weightedPoint(weightedPoints: Array<[Point, number]>): Point {
+  const totalWeight = weightedPoints.reduce((sum, [, weight]) => sum + weight, 0);
+
+  return {
+    x: weightedPoints.reduce((sum, [point, weight]) => sum + point.x * weight, 0) / totalWeight,
+    y: weightedPoints.reduce((sum, [point, weight]) => sum + point.y * weight, 0) / totalWeight
+  };
+}
+
+function copyPoint(point: Point): Point {
+  return {
+    x: point.x,
+    y: point.y
+  };
 }
 
 function getPathPointBeforeEnd(node: PathNode): Point {
@@ -1532,6 +1679,44 @@ function appendCatmullRomSegment(node: PathNode, end: Point): Segment[] {
   return nextSegments;
 }
 
+export function createCubicBezierSegment(
+  previous: Point,
+  start: Point,
+  end: Point
+): Extract<Segment, { type: "cubic" }> {
+  const incoming = {
+    x: start.x - previous.x,
+    y: start.y - previous.y
+  };
+  const outgoing = {
+    x: end.x - start.x,
+    y: end.y - start.y
+  };
+  const incomingLength = Math.hypot(incoming.x, incoming.y);
+  const outgoingLength = Math.max(Math.hypot(outgoing.x, outgoing.y), 0.001);
+
+  if (incomingLength < 0.001) {
+    return {
+      type: "cubic",
+      control1: lerpPoint(start, end, 1 / 3),
+      control2: lerpPoint(start, end, 2 / 3),
+      to: end
+    };
+  }
+
+  const tangentLength = Math.min(incomingLength, outgoingLength) * 0.45;
+
+  return {
+    type: "cubic",
+    control1: {
+      x: start.x + (incoming.x / incomingLength) * tangentLength,
+      y: start.y + (incoming.y / incomingLength) * tangentLength
+    },
+    control2: lerpPoint(start, end, 2 / 3),
+    to: end
+  };
+}
+
 function createCatmullRomCubicSegment(
   previous: Point,
   start: Point,
@@ -1556,21 +1741,6 @@ function catmullRomControl2(start: Point, end: Point, next: Point): Point {
   return {
     x: end.x - (next.x - start.x) / 6,
     y: end.y - (next.y - start.y) / 6
-  };
-}
-
-function createBasisCubicSegment(previous: Point, start: Point, end: Point): Extract<Segment, { type: "cubic" }> {
-  const softenedStart = lerpPoint(start, end, 1 / 3);
-  const softenedEnd = lerpPoint(start, end, 2 / 3);
-
-  return {
-    type: "cubic",
-    control1: {
-      x: (start.x * 2 + softenedStart.x + previous.x * 0.15) / 3.15,
-      y: (start.y * 2 + softenedStart.y + previous.y * 0.15) / 3.15
-    },
-    control2: softenedEnd,
-    to: end
   };
 }
 
@@ -1670,7 +1840,7 @@ function boundsForNode(node: GeometryNode): Bounds | undefined {
 }
 
 function pathPoints(node: PathNode): Point[] {
-  const points = [node.start];
+  const points = node.spline?.type === "basis" ? [...node.spline.points, node.start] : [node.start];
 
   for (const segment of node.segments) {
     if (segment.type === "quadratic") {

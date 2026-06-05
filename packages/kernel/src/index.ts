@@ -171,6 +171,12 @@ function moveNode(node: GeometryNode, patch: MovePatch): GeometryNode {
       return {
         ...node,
         start: translatePoint(node.start, delta),
+        spline: node.spline
+          ? {
+              ...node.spline,
+              points: node.spline.points.map((point) => translatePoint(point, delta))
+            }
+          : undefined,
         segments: node.segments.map((segment) => {
           switch (segment.type) {
             case "line":
