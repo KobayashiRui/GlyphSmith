@@ -1000,10 +1000,6 @@
 
 		if (isShapeTool(tool)) {
 			const bounds = shapeBoundsForPlacement(tool, draftStart, draftEnd);
-			const x = Math.min(draftStart.x, draftEnd.x);
-			const y = Math.min(draftStart.y, draftEnd.y);
-			const width = Math.abs(draftEnd.x - draftStart.x);
-			const height = Math.abs(draftEnd.y - draftStart.y);
 
 			if (tool === 'ellipse') {
 				canvasContext.beginPath();
@@ -1044,10 +1040,6 @@
 					canvasContext.closePath();
 					canvasContext.stroke();
 				}
-			}
-
-			if (width > 0 || height > 0) {
-				canvasContext.strokeRect(x, y, width, height);
 			}
 		}
 
