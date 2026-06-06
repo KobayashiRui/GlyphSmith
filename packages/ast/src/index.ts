@@ -146,6 +146,22 @@ export type GeometryDocument = {
   comments: Comment[];
 };
 
+export type GlyphSmithPage = {
+  id: string;
+  name: string;
+  document: GeometryDocument;
+};
+
+export type GlyphSmithProject = {
+  schemaVersion: 1;
+  id: string;
+  name: string;
+  activePageId: string;
+  pages: GlyphSmithPage[];
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type InsertPatch = {
   op: "insert";
   parentId: NodeId;
@@ -194,6 +210,19 @@ export type CreateDocumentOptions = {
   height?: number;
 };
 
+export type CreatePageOptions = CreateDocumentOptions & {
+  pageId?: string;
+};
+
+export type CreateProjectOptions = {
+  id?: string;
+  name?: string;
+  pageId?: string;
+  documentId?: string;
+  width?: number;
+  height?: number;
+};
+
 export function createDocument(options: CreateDocumentOptions = {}): GeometryDocument {
   return {
     id: options.id ?? "document-1",
@@ -208,4 +237,97 @@ export function createDocument(options: CreateDocumentOptions = {}): GeometryDoc
     },
     comments: []
   };
+}
+
+export function createPage(options: CreatePageOptions = {}): GlyphSmithPage {
+  const pageId = options.pageId ?? "page-1";
+  const name = options.name ?? "Page 1";
+
+  return {
+    id: pageId,
+    name,
+    document: createDocument({
+      id: options.id ?? `${pageId}-document`,
+      name,
+      width: options.width,
+      height: options.height
+    })
+  };
+}
+
+export function createProject(options: CreateProjectOptions = {}): GlyphSmithProject {
+  const firstPage = createPage({
+    pageId: options.pageId,
+    id: options.documentId,
+    name: "Page 1",
+    width: options.width,
+    height: options.height
+  });
+  const now = new Date().toISOString();
+
+  return {
+    schemaVersion: 1,
+    id: options.id ?? "project-1",
+    name: options.name ?? "Untitled Project",
+    activePageId: firstPage.id,
+    pages: [firstPage],
+    createdAt: now,
+    updatedAt: now
+  };
+}
+
+export function isGlyphSmithProject(value: unknown): value is GlyphSmithProject {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if (value.schemaVersion !== 1 || typeof value.id !== "string" || typeof value.name !== "string") {
+    return false;
+  }
+
+  if (typeof value.activePageId !== "string" || !Array.isArray(value.pages) || value.pages.length === 0) {
+    return false;
+  }
+
+  return (
+    value.pages.every(isGlyphSmithPage) &&
+    value.pages.some((page) => page.id === value.activePageId)
+  );
+}
+
+function isGlyphSmithPage(value: unknown): value is GlyphSmithPage {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    isGeometryDocument(value.document)
+  );
+}
+
+function isGeometryDocument(value: unknown): value is GeometryDocument {
+  if (!isRecord(value) || !isRecord(value.root)) {
+    return false;
+  }
+
+  return (
+    typeof value.id === "string" &&
+    typeof value.name === "string" &&
+    typeof value.width === "number" &&
+    Number.isFinite(value.width) &&
+    value.width > 0 &&
+    typeof value.height === "number" &&
+    Number.isFinite(value.height) &&
+    value.height > 0 &&
+    value.root.type === "group" &&
+    typeof value.root.id === "string" &&
+    Array.isArray(value.root.children) &&
+    Array.isArray(value.comments)
+  );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null;
 }

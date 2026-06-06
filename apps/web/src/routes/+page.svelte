@@ -1,8 +1,10 @@
 <script lang="ts">
 	import {
-		createDocument,
+		createPage,
+		createProject,
 		type GeometryDocument,
 		type GeometryNode,
+		type GlyphSmithProject,
 		type NodeId,
 		type NodeStyle,
 		type PathNode,
@@ -36,15 +38,15 @@
 	} from '@glyphsmith/editor';
 	import { applyPatch, findNode } from '@glyphsmith/kernel';
 	import { exportToSvg } from '@glyphsmith/svg';
+	import PageThumbnail from '$lib/PageThumbnail.svelte';
 	import { onMount } from 'svelte';
+	import type { PageData } from './$types';
+
+	let { data }: { data: PageData } = $props();
 
 	let canvas: HTMLCanvasElement;
 	let context = $state<CanvasRenderingContext2D | undefined>();
-	let geometryDocument = $state<GeometryDocument>(createDocument({
-		name: 'GlyphSmith Document',
-		width: 256,
-		height: 256
-	}));
+	let project = $state<GlyphSmithProject>(initialProjectFromData());
 	let selectedNodeIds = $state<NodeId[]>([]);
 	let tool = $state<Tool>('select');
 	let pathSegmentMode = $state<PathSegmentMode>('line');
@@ -62,15 +64,33 @@
 	let nextNodeIndex = $state(1);
 	let canvasPixelRatio = $state(1);
 	let snapTarget = $state<SnapPoint | undefined>();
-	let undoStack = $state<GeometryDocument[]>([]);
-	let redoStack = $state<GeometryDocument[]>([]);
-	let liveEditStartDocument: GeometryDocument | undefined;
+	let undoStack = $state<GlyphSmithProject[]>([]);
+	let redoStack = $state<GlyphSmithProject[]>([]);
+	let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>(initialSaveStatusFromData());
+	let liveEditStartProject: GlyphSmithProject | undefined;
 	let hasFitInitialViewport = false;
 
+	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
+	const geometryDocument = $derived(activePage.document);
 	const svgOutput = $derived(exportToSvg(geometryDocument));
 	const selectedNode = $derived(
 		selectedNodeIds[0] ? findNode(geometryDocument, selectedNodeIds[0]) : undefined
 	);
+
+	function initialProjectFromData(): GlyphSmithProject {
+		return (
+			data.initialProject ??
+			createProject({
+				name: 'GlyphSmith Project',
+				width: 256,
+				height: 256
+			})
+		);
+	}
+
+	function initialSaveStatusFromData(): 'idle' | 'saved' {
+		return data.projectFile ? 'saved' : 'idle';
+	}
 
 	$effect(() => {
 		geometryDocument;
@@ -262,12 +282,12 @@
 			const dy = worldPoint.y - lastDragPoint.y;
 
 			for (const nodeId of selectedNodeIds) {
-				geometryDocument = applyPatch(geometryDocument, {
+				updateActiveDocument(applyPatch(geometryDocument, {
 					op: 'move',
 					target: nodeId,
 					dx,
 					dy
-				});
+				}));
 			}
 
 			lastDragPoint = worldPoint;
@@ -278,7 +298,7 @@
 			const patch = createEditHandleUpdatePatch(geometryDocument, editingHandle, worldPoint);
 
 			if (patch) {
-				geometryDocument = applyPatch(geometryDocument, patch);
+				updateActiveDocument(applyPatch(geometryDocument, patch));
 			}
 
 			return;
@@ -643,23 +663,23 @@
 
 
 	function commitPatch(patch: Parameters<typeof applyPatch>[1]) {
-		undoStack = [...undoStack, cloneDocument(geometryDocument)];
+		undoStack = [...undoStack, cloneProject(project)];
 		redoStack = [];
-		geometryDocument = applyPatch(geometryDocument, patch);
+		updateActiveDocument(applyPatch(geometryDocument, patch));
 	}
 
 	function beginLiveEdit() {
-		liveEditStartDocument = cloneDocument(geometryDocument);
+		liveEditStartProject = cloneProject(project);
 		redoStack = [];
 	}
 
 	function finishLiveEdit() {
-		if (!liveEditStartDocument) {
+		if (!liveEditStartProject) {
 			return;
 		}
 
-		undoStack = [...undoStack, liveEditStartDocument];
-		liveEditStartDocument = undefined;
+		undoStack = [...undoStack, liveEditStartProject];
+		liveEditStartProject = undefined;
 	}
 
 	function undo() {
@@ -670,8 +690,8 @@
 		}
 
 		undoStack = undoStack.slice(0, -1);
-		redoStack = [...redoStack, cloneDocument(geometryDocument)];
-		geometryDocument = previous;
+		redoStack = [...redoStack, cloneProject(project)];
+		project = previous;
 		cancelDraft();
 		selectedNodeIds = [];
 	}
@@ -684,8 +704,8 @@
 		}
 
 		redoStack = redoStack.slice(0, -1);
-		undoStack = [...undoStack, cloneDocument(geometryDocument)];
-		geometryDocument = next;
+		undoStack = [...undoStack, cloneProject(project)];
+		project = next;
 		cancelDraft();
 		selectedNodeIds = [];
 	}
@@ -695,18 +715,115 @@
 			return;
 		}
 
-		undoStack = [...undoStack, cloneDocument(geometryDocument)];
+		undoStack = [...undoStack, cloneProject(project)];
 		redoStack = [];
+		let nextDocument = geometryDocument;
 
 		for (const nodeId of selectedNodeIds) {
-			geometryDocument = applyPatch(geometryDocument, {
+			nextDocument = applyPatch(nextDocument, {
 				op: 'delete',
 				target: nodeId
 			});
 		}
 
+		updateActiveDocument(nextDocument);
 		selectedNodeIds = [];
 		cancelDraft();
+	}
+
+	function setActivePage(pageId: string) {
+		if (pageId === project.activePageId) {
+			return;
+		}
+
+		project = {
+			...project,
+			activePageId: pageId
+		};
+		selectedNodeIds = [];
+		finishPathDrawing();
+	}
+
+	function addPage() {
+		const pageId = nextPageId();
+		const page = createPage({
+			pageId,
+			name: `Page ${project.pages.length + 1}`,
+			width: geometryDocument.width,
+			height: geometryDocument.height
+		});
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			activePageId: page.id,
+			pages: [...project.pages, page],
+			updatedAt: new Date().toISOString()
+		};
+		selectedNodeIds = [];
+		finishPathDrawing();
+	}
+
+	function duplicatePage() {
+		const pageId = nextPageId();
+		const document = cloneDocument(geometryDocument);
+
+		document.id = `${pageId}-document`;
+		document.name = `${activePage.name} Copy`;
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			activePageId: pageId,
+			pages: [
+				...project.pages,
+				{
+					id: pageId,
+					name: document.name,
+					document
+				}
+			],
+			updatedAt: new Date().toISOString()
+		};
+		selectedNodeIds = [];
+		finishPathDrawing();
+	}
+
+	function deleteActivePage() {
+		if (project.pages.length <= 1) {
+			return;
+		}
+
+		const activeIndex = project.pages.findIndex((page) => page.id === project.activePageId);
+		const pages = project.pages.filter((page) => page.id !== project.activePageId);
+		const nextActivePage = pages[Math.max(0, activeIndex - 1)] ?? pages[0];
+
+		if (!nextActivePage) {
+			return;
+		}
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			activePageId: nextActivePage.id,
+			pages,
+			updatedAt: new Date().toISOString()
+		};
+		selectedNodeIds = [];
+		finishPathDrawing();
+	}
+
+	function nextPageId(): string {
+		let index = project.pages.length + 1;
+
+		while (project.pages.some((page) => page.id === `page-${index}`)) {
+			index += 1;
+		}
+
+		return `page-${index}`;
 	}
 
 	function updateSelectedStyle(field: keyof NodeStyle, rawValue: string) {
@@ -745,13 +862,63 @@
 		const link = document.createElement('a');
 
 		link.href = url;
-		link.download = `${geometryDocument.name || 'glyphsmith'}.svg`;
+		link.download = `${activePage.name || 'glyphsmith'}.svg`;
 		link.click();
 		URL.revokeObjectURL(url);
 	}
 
+	function downloadProject() {
+		const snapshot = cloneProject(project);
+		const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
+		const url = URL.createObjectURL(blob);
+		const link = document.createElement('a');
+
+		link.href = url;
+		link.download = `${project.name || 'glyphsmith'}.gs.json`;
+		link.click();
+		URL.revokeObjectURL(url);
+	}
+
+	async function saveProjectToDisk() {
+		saveStatus = 'saving';
+
+		try {
+			const response = await fetch('/api/project', {
+				method: 'POST',
+				headers: {
+					'Content-Type': 'application/json'
+				},
+				body: JSON.stringify(cloneProject(project))
+			});
+
+			saveStatus = response.ok ? 'saved' : 'error';
+		} catch {
+			saveStatus = 'error';
+		}
+	}
+
 	function cloneDocument(documentToClone: GeometryDocument): GeometryDocument {
 		return structuredClone($state.snapshot(documentToClone)) as GeometryDocument;
+	}
+
+	function cloneProject(projectToClone: GlyphSmithProject): GlyphSmithProject {
+		return structuredClone($state.snapshot(projectToClone)) as GlyphSmithProject;
+	}
+
+	function updateActiveDocument(document: GeometryDocument) {
+		project = {
+			...project,
+			updatedAt: new Date().toISOString(),
+			pages: project.pages.map((page) =>
+				page.id === project.activePageId
+					? {
+							...page,
+							name: document.name,
+							document
+						}
+					: page
+			)
+		};
 	}
 
 	function draw() {
@@ -1151,8 +1318,8 @@
 		<div class="topbar-brand">
 			<div class="brand-mark">G</div>
 			<div>
-				<h1>GlyphSmith</h1>
-				<p>{geometryDocument.name}</p>
+				<h1>{project.name}</h1>
+				<p>{activePage.name}</p>
 			</div>
 		</div>
 
@@ -1201,19 +1368,44 @@
 			</div>
 		</aside>
 
-		<section class="canvas-shell">
-			<canvas
-				class:panning
-				class:space-pan={spacePressed}
-				bind:this={canvas}
-				onpointerdown={handlePointerDown}
-				onpointermove={handlePointerMove}
-				onpointerup={handlePointerUp}
-				onpointerleave={handlePointerLeave}
-				onwheel={handleWheel}
-				oncontextmenu={(event) => event.preventDefault()}
-			></canvas>
-		</section>
+		<div class="editor-stage">
+			<section class="canvas-shell">
+				<canvas
+					class:panning
+					class:space-pan={spacePressed}
+					bind:this={canvas}
+					onpointerdown={handlePointerDown}
+					onpointermove={handlePointerMove}
+					onpointerup={handlePointerUp}
+					onpointerleave={handlePointerLeave}
+					onwheel={handleWheel}
+					oncontextmenu={(event) => event.preventDefault()}
+				></canvas>
+			</section>
+
+			<footer class="page-strip" aria-label="Pages">
+				<div class="page-strip-list">
+					{#each project.pages as page, pageIndex}
+						<button
+							class:active={page.id === project.activePageId}
+							type="button"
+							onclick={() => setActivePage(page.id)}
+						>
+							<PageThumbnail document={page.document} index={pageIndex + 1} />
+							<span class="page-meta">
+								<strong>{page.name}</strong>
+								<small>{page.document.width} x {page.document.height}px</small>
+							</span>
+						</button>
+					{/each}
+				</div>
+				<div class="page-strip-actions">
+					<button type="button" onclick={addPage}>New</button>
+					<button type="button" onclick={duplicatePage}>Duplicate</button>
+					<button type="button" onclick={deleteActivePage} disabled={project.pages.length <= 1}>Delete</button>
+				</div>
+			</footer>
+		</div>
 
 		<aside class="inspector">
 			<div class="panel">
@@ -1336,8 +1528,18 @@
 			</div>
 
 			<div class="panel export-panel">
-				<h2>SVG Export</h2>
+				<h2>Export</h2>
 				<button class="secondary-button" type="button" onclick={downloadSvg}>Download SVG</button>
+				<button class="secondary-button" type="button" onclick={saveProjectToDisk} disabled={saveStatus === 'saving'}>
+					{saveStatus === 'saving' ? 'Saving...' : 'Save Project'}
+				</button>
+				<button class="secondary-button" type="button" onclick={downloadProject}>Download Project</button>
+				{#if data.projectFile}
+					<div class="project-file-label">{data.projectFile}</div>
+				{/if}
+				{#if saveStatus === 'error'}
+					<div class="project-save-error">Project file is not writable from this session.</div>
+				{/if}
 				<textarea readonly value={svgOutput}></textarea>
 			</div>
 		</aside>

@@ -251,11 +251,141 @@ button {
 	color: #757b87;
 }
 
+.editor-stage {
+	display: grid;
+	grid-template-rows: minmax(0, 1fr) 124px;
+	min-width: 0;
+	min-height: 0;
+}
+
 .canvas-shell {
 	position: relative;
 	min-width: 0;
 	min-height: 0;
 	background: #101113;
+}
+
+.page-strip {
+	display: grid;
+	grid-template-columns: minmax(0, 1fr) auto;
+	gap: 12px;
+	align-items: center;
+	border-top: 1px solid #2a2d33;
+	background: #17191d;
+	padding: 10px 12px;
+}
+
+.page-strip-list {
+	display: flex;
+	min-width: 0;
+	gap: 8px;
+	overflow-x: auto;
+}
+
+.page-strip-list button {
+	display: grid;
+	grid-template-columns: 96px minmax(96px, 1fr);
+	gap: 8px;
+	align-items: center;
+	min-width: 230px;
+	min-height: 92px;
+	border: 1px solid #2d3138;
+	border-radius: 6px;
+	background: #202329;
+	padding: 6px;
+	color: #d9dde5;
+	text-align: left;
+}
+
+.page-strip-list button.active {
+	border-color: #3b82f6;
+	background: #22345a;
+	color: #dbeafe;
+}
+
+.page-thumb {
+	position: relative;
+	display: block;
+	width: 96px;
+	height: 72px;
+	overflow: hidden;
+	border: 1px solid #343840;
+	border-radius: 4px;
+	background: #111317;
+}
+
+.page-thumb-canvas {
+	display: block;
+	width: 100%;
+	height: 100%;
+	cursor: pointer;
+	touch-action: auto;
+}
+
+.page-thumb-index {
+	position: absolute;
+	right: 3px;
+	bottom: 3px;
+	display: grid;
+	min-width: 16px;
+	height: 16px;
+	place-items: center;
+	border-radius: 3px;
+	background: rgb(15 23 42 / 88%);
+	color: #eef0f4;
+	font-size: 12px;
+	font-variant-numeric: tabular-nums;
+	line-height: 1;
+}
+
+.page-meta {
+	display: grid;
+	min-width: 0;
+	gap: 3px;
+}
+
+.page-meta strong,
+.page-meta small {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.page-meta strong {
+	font-size: 12px;
+	font-weight: 600;
+}
+
+.page-meta small {
+	color: #9299a6;
+	font-size: 11px;
+	font-variant-numeric: tabular-nums;
+}
+
+.page-strip-actions {
+	display: flex;
+	gap: 6px;
+}
+
+.page-strip-actions button {
+	min-height: 34px;
+	border: 1px solid #343840;
+	border-radius: 6px;
+	background: #202329;
+	padding: 0 10px;
+	color: #d9dde5;
+	font-size: 12px;
+}
+
+.page-strip-actions button:hover {
+	border-color: #3b82f6;
+	background: #243044;
+	color: #ffffff;
+}
+
+.page-strip-actions button:disabled {
+	cursor: default;
+	opacity: 0.4;
 }
 
 canvas {
@@ -397,6 +527,11 @@ canvas.panning {
 	color: #ffffff;
 }
 
+.secondary-button:disabled {
+	cursor: default;
+	opacity: 0.45;
+}
+
 .secondary-button.danger:hover {
 	border-color: #ef4444;
 	background: #3a2024;
@@ -444,6 +579,20 @@ dd {
 
 .export-panel .secondary-button {
 	margin-bottom: 10px;
+}
+
+.project-file-label,
+.project-save-error {
+	overflow: hidden;
+	margin: -2px 0 10px;
+	color: #8d93a0;
+	font-size: 11px;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.project-save-error {
+	color: #fca5a5;
 }
 
 textarea {

@@ -174,6 +174,29 @@ The initial release is CLI-first.
 
 No hosted web application is required.
 
+Project file paths passed to the CLI may omit `.gs.json`.
+
+Examples:
+
+```bash
+glyphsmith
+glyphsmith logo
+glyphsmith logo.gs.json
+glyphsmith init logo
+```
+
+Expected path resolution:
+
+```txt
+glyphsmith          -> ./glyphsmith.gs.json
+glyphsmith logo     -> ./logo.gs.json
+glyphsmith logo.gs.json -> ./logo.gs.json
+```
+
+If the resolved project file does not exist, the CLI should create it and continue without prompting.
+
+Keep CLI behavior deterministic and non-interactive so installed agent skills can launch GlyphSmith reliably.
+
 ---
 
 # packages/ast
@@ -286,6 +309,25 @@ Keep skills focused and small.
 
 Geometry AST is the internal representation.
 
+## Project Files
+
+GlyphSmith project files use the `.gs.json` extension.
+
+Project files may contain multiple pages.
+
+```txt
+GlyphSmithProject
+└ Page[]
+  └ GeometryDocument
+    └ SVG-equivalent Geometry AST
+```
+
+Treat one page as one SVG.
+
+The active editor canvas renders one active page at a time.
+
+The bottom page strip should show page thumbnails rendered from each page's GeometryDocument, not static placeholder boxes.
+
 Supported nodes:
 
 * GroupNode
@@ -394,3 +436,15 @@ Simplicity > Overengineering
 When uncertain:
 
 Choose the simpler architecture.
+
+---
+
+# Future Work
+
+Keep these as follow-up tasks unless the user explicitly asks to implement them:
+
+* Optimize page thumbnail rendering so only changed pages redraw.
+* Add page rename and drag-to-reorder in the bottom page strip.
+* Add project-level autosave and dirty-state handling for `.gs.json`.
+* Add MCP project/page APIs for `getProject()`, `getPages()`, `setActivePage()`, and page-scoped `applyPatch()`.
+* Preserve project/page metadata when importing or exporting multiple SVG files.
