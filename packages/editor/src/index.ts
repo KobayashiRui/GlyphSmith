@@ -2164,26 +2164,94 @@ function boundsForNode(node: GeometryNode): Bounds | undefined {
     case "polyline":
       return mergeBounds(node.points.map((point) => ({ ...point, width: 0, height: 0 })));
     case "path":
-      return mergeBounds(pathPoints(node).map((point) => ({ ...point, width: 0, height: 0 })));
+      return mergeBounds(pathRenderPoints(node).map((point) => ({ ...point, width: 0, height: 0 })));
   }
 }
 
-function pathPoints(node: PathNode): Point[] {
-  const points = node.spline?.type === "basis" ? [...node.spline.points, node.start] : [node.start];
+function pathRenderPoints(node: PathNode): Point[] {
+  const points: Point[] = [node.start];
+  let current = node.start;
 
   for (const segment of node.segments) {
-    if (segment.type === "quadratic") {
-      points.push(segment.control);
-    }
-
-    if (segment.type === "cubic") {
-      points.push(segment.control1, segment.control2);
-    }
-
-    points.push(segment.to);
+    points.push(...samplePathSegment(current, segment));
+    current = segment.to;
   }
 
   return points;
+}
+
+function samplePathSegment(start: Point, segment: Segment): Point[] {
+  if (segment.type === "line") {
+    return [segment.to];
+  }
+
+  if (segment.type === "quadratic") {
+    return sampleParametricCurve((amount) => quadraticPoint(start, segment.control, segment.to, amount), 24);
+  }
+
+  if (segment.type === "cubic") {
+    return sampleParametricCurve(
+      (amount) => cubicPoint(start, segment.control1, segment.control2, segment.to, amount),
+      32
+    );
+  }
+
+  return sampleArcSegment(start, segment);
+}
+
+function sampleParametricCurve(pointAt: (amount: number) => Point, sampleCount: number): Point[] {
+  const points: Point[] = [];
+
+  for (let index = 1; index <= sampleCount; index += 1) {
+    points.push(pointAt(index / sampleCount));
+  }
+
+  return points;
+}
+
+function quadraticPoint(start: Point, control: Point, end: Point, amount: number): Point {
+  const inverse = 1 - amount;
+
+  return {
+    x: inverse * inverse * start.x + 2 * inverse * amount * control.x + amount * amount * end.x,
+    y: inverse * inverse * start.y + 2 * inverse * amount * control.y + amount * amount * end.y
+  };
+}
+
+function cubicPoint(start: Point, control1: Point, control2: Point, end: Point, amount: number): Point {
+  const inverse = 1 - amount;
+
+  return {
+    x:
+      inverse * inverse * inverse * start.x +
+      3 * inverse * inverse * amount * control1.x +
+      3 * inverse * amount * amount * control2.x +
+      amount * amount * amount * end.x,
+    y:
+      inverse * inverse * inverse * start.y +
+      3 * inverse * inverse * amount * control1.y +
+      3 * inverse * amount * amount * control2.y +
+      amount * amount * amount * end.y
+  };
+}
+
+function sampleArcSegment(start: Point, segment: Extract<Segment, { type: "arc" }>): Point[] {
+  const parameters = arcCenterParameters(start, segment);
+
+  if (!parameters) {
+    return [segment.to];
+  }
+
+  return sampleParametricCurve(
+    (amount) => (amount === 1 ? segment.to : pointOnArc(parameters, amount)),
+    arcSampleCount(parameters)
+  );
+}
+
+function arcSampleCount(parameters: NonNullable<ReturnType<typeof arcCenterParameters>>): number {
+  const radius = Math.max(parameters.rx, parameters.ry);
+
+  return Math.max(16, Math.min(96, Math.ceil(Math.abs(parameters.deltaAngle) * radius / 8)));
 }
 
 function mergeBounds(boundsList: Bounds[]): Bounds | undefined {
@@ -2288,8 +2356,7 @@ function distanceToArcSegment(
     return distanceToSegment(point, start, segment.to);
   }
 
-  const radius = Math.max(parameters.rx, parameters.ry);
-  const sampleCount = Math.max(16, Math.min(96, Math.ceil(Math.abs(parameters.deltaAngle) * radius / 8)));
+  const sampleCount = arcSampleCount(parameters);
   let nearest = Number.POSITIVE_INFINITY;
   let previous = start;
 
