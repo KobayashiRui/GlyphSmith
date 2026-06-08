@@ -15,6 +15,7 @@
 	import {
 		createAppendPathSegmentPatch,
 		createBasisSplinePathGeometry,
+		createArcSegmentFromTangent,
 		createCubicBezierSegment,
 		createEllipseInsertPatch,
 		createLinePathInsertPatch,
@@ -22,7 +23,9 @@
 		createRectInsertPatch,
 		createTriangleInsertPatch,
 		createEditHandleUpdatePatch,
+		drawArcSegment,
 		fitViewportToDocument,
+		getPathEndTangent,
 		hitTest,
 		hitTestEditHandle,
 		panViewport,
@@ -1634,6 +1637,7 @@
 		canvasContext.setLineDash([]);
 		canvasContext.fillStyle = uiColors.primaryHover;
 		drawDraftHandle(canvasContext, draftStart);
+
 		drawDraftHandle(canvasContext, draftEnd);
 
 		canvasContext.restore();
@@ -1674,6 +1678,11 @@
 			return;
 		}
 
+		if (pathSegmentMode === 'arc') {
+			drawArcDraftSegment(canvasContext, start, end);
+			return;
+		}
+
 		canvasContext.beginPath();
 		canvasContext.moveTo(start.x, start.y);
 
@@ -1699,9 +1708,77 @@
 		canvasContext.stroke();
 	}
 
+	function drawArcDraftSegment(canvasContext: CanvasRenderingContext2D, start: Point, end: Point) {
+		const tangent = arcDraftTangent();
+		const segment = createArcSegmentFromTangent(start, end, tangent);
+		const circle = arcCandidateCircle(start, segment, tangent);
+
+		canvasContext.save();
+		canvasContext.setLineDash([]);
+
+		if (circle) {
+			canvasContext.globalAlpha = 0.28;
+			canvasContext.lineWidth = 1.5 / viewport.zoom;
+			canvasContext.beginPath();
+			canvasContext.arc(circle.center.x, circle.center.y, circle.radius, 0, Math.PI * 2);
+			canvasContext.stroke();
+			canvasContext.globalAlpha = 1;
+		}
+
+		canvasContext.lineWidth = 3 / viewport.zoom;
+		canvasContext.beginPath();
+		canvasContext.moveTo(start.x, start.y);
+		drawArcSegment(canvasContext, start, segment);
+		canvasContext.stroke();
+		canvasContext.restore();
+	}
+
+	function arcDraftTangent(): Point {
+		if (!activePathNodeId) {
+			return { x: 1, y: 0 };
+		}
+
+		const node = findNode(geometryDocument, activePathNodeId);
+
+		if (!isPathNode(node)) {
+			return { x: 1, y: 0 };
+		}
+
+		return getPathEndTangent(node);
+	}
+
+	function arcCandidateCircle(start: Point, segment: Extract<Segment, { type: 'arc' }>, tangent: Point) {
+		const length = Math.hypot(tangent.x, tangent.y);
+
+		if (length < 0.001) {
+			return undefined;
+		}
+
+		const unitTangent = {
+			x: tangent.x / length,
+			y: tangent.y / length
+		};
+		const normal = {
+			x: -unitTangent.y,
+			y: unitTangent.x
+		};
+		const signedRadius = segment.sweep ? segment.rx : -segment.rx;
+		const center = {
+			x: start.x + normal.x * signedRadius,
+			y: start.y + normal.y * signedRadius
+		};
+
+		return {
+			center,
+			radius: segment.rx
+		};
+	}
+
 	function drawPathGeometry(canvasContext: CanvasRenderingContext2D, start: Point, segments: Segment[]) {
 		canvasContext.beginPath();
 		canvasContext.moveTo(start.x, start.y);
+
+		let current = start;
 
 		for (const segment of segments) {
 			if (segment.type === 'line') {
@@ -1717,9 +1794,13 @@
 					segment.to.x,
 					segment.to.y
 				);
+			} else if (segment.type === 'arc') {
+				drawArcSegment(canvasContext, current, segment);
 			} else {
 				canvasContext.lineTo(segment.to.x, segment.to.y);
 			}
+
+			current = segment.to;
 		}
 
 		canvasContext.stroke();

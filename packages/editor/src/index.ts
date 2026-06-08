@@ -172,6 +172,7 @@ export function renderDocument(
     viewport.x * pixelRatio,
     viewport.y * pixelRatio
   );
+  context.setLineDash([]);
   drawPage(context, document);
 
   for (const child of document.root.children) {
@@ -364,10 +365,11 @@ export function createAppendPathSegmentPatch(
 
   const start = getPathEndPoint(node);
   const previous = getPathPointBeforeEnd(node);
+  const tangent = getPathEndTangent(node);
   const segments =
     segmentMode === "catmullRom"
       ? appendCatmullRomSegment(node, end)
-      : [...node.segments, createSegment(start, end, segmentMode, previous)];
+      : [...node.segments, createSegment(start, end, segmentMode, previous, tangent)];
 
   return {
     op: "update",
@@ -686,11 +688,42 @@ function drawPath(context: CanvasRenderingContext2D, node: PathNode): void {
   }
 }
 
-function drawArcSegment(
+export function drawArcSegment(
   context: CanvasRenderingContext2D,
   start: Point,
   segment: Extract<Segment, { type: "arc" }>
 ): void {
+  const parameters = arcCenterParameters(start, segment);
+
+  if (!parameters) {
+    context.lineTo(segment.to.x, segment.to.y);
+    return;
+  }
+
+  context.ellipse(
+    parameters.cx,
+    parameters.cy,
+    parameters.rx,
+    parameters.ry,
+    parameters.phi,
+    parameters.startAngle,
+    parameters.startAngle + parameters.deltaAngle,
+    !segment.sweep
+  );
+}
+
+function arcCenterParameters(
+  start: Point,
+  segment: Extract<Segment, { type: "arc" }>
+): {
+  cx: number;
+  cy: number;
+  deltaAngle: number;
+  phi: number;
+  rx: number;
+  ry: number;
+  startAngle: number;
+} | undefined {
   const rx = Math.max(Math.abs(segment.rx), 0.001);
   const ry = Math.max(Math.abs(segment.ry), 0.001);
   const phi = (segment.xAxisRotation * Math.PI) / 180;
@@ -716,6 +749,11 @@ function drawArcSegment(
     adjustedRx * adjustedRx * y1p * y1p -
     adjustedRy * adjustedRy * x1p * x1p;
   const denominator = adjustedRx * adjustedRx * y1p * y1p + adjustedRy * adjustedRy * x1p * x1p;
+
+  if (denominator === 0) {
+    return undefined;
+  }
+
   const coef = sign * Math.sqrt(Math.max(0, numerator / denominator));
   const cxp = (coef * adjustedRx * y1p) / adjustedRy;
   const cyp = (-coef * adjustedRy * x1p) / adjustedRx;
@@ -739,16 +777,31 @@ function drawArcSegment(
     deltaAngle += Math.PI * 2;
   }
 
-  context.ellipse(
+  return {
     cx,
     cy,
-    adjustedRx,
-    adjustedRy,
+    deltaAngle,
     phi,
-    startAngle,
-    startAngle + deltaAngle,
-    !segment.sweep
-  );
+    rx: adjustedRx,
+    ry: adjustedRy,
+    startAngle
+  };
+}
+
+function pointOnArc(
+  parameters: NonNullable<ReturnType<typeof arcCenterParameters>>,
+  amount: number
+): Point {
+  const angle = parameters.startAngle + parameters.deltaAngle * amount;
+  const cosPhi = Math.cos(parameters.phi);
+  const sinPhi = Math.sin(parameters.phi);
+  const x = parameters.rx * Math.cos(angle);
+  const y = parameters.ry * Math.sin(angle);
+
+  return {
+    x: parameters.cx + x * cosPhi - y * sinPhi,
+    y: parameters.cy + x * sinPhi + y * cosPhi
+  };
 }
 
 function vectorAngle(ux: number, uy: number, vx: number, vy: number): number {
@@ -765,6 +818,7 @@ function applyStyle(context: CanvasRenderingContext2D, style: NodeStyle | undefi
   context.lineWidth = style?.strokeWidth ?? 2;
   context.lineCap = canvasLineCap(style?.strokeLinecap);
   context.lineJoin = canvasLineJoin(style?.strokeLinejoin);
+  context.setLineDash([]);
   context.globalAlpha = style?.opacity ?? 1;
 }
 
@@ -899,10 +953,6 @@ function drawPathControlGuides(
       if (segment.type === "cubic") {
         drawGuideLine(context, current, segment.control1);
         drawGuideLine(context, segment.to, segment.control2);
-      }
-
-      if (segment.type === "arc") {
-        drawGuideLine(context, lerpPoint(current, segment.to, 0.5), arcControlPoint(current, segment));
       }
 
       current = segment.to;
@@ -1576,7 +1626,13 @@ function createPolygonHandleUpdatePatch(
   };
 }
 
-function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous?: Point): Segment {
+function createSegment(
+  start: Point,
+  end: Point,
+  mode: PathSegmentMode,
+  previous?: Point,
+  tangent?: Point
+): Segment {
   switch (mode) {
     case "quadratic":
       return {
@@ -1587,15 +1643,7 @@ function createSegment(start: Point, end: Point, mode: PathSegmentMode, previous
     case "cubic":
       return createCubicBezierSegment(previous ?? start, start, end);
     case "arc":
-      return {
-        type: "arc",
-        rx: Math.max(1, Math.abs(end.x - start.x) / 2),
-        ry: Math.max(1, Math.abs(end.y - start.y) / 2),
-        xAxisRotation: 0,
-        largeArc: false,
-        sweep: true,
-        to: end
-      };
+      return createArcSegmentFromTangent(start, end, tangent ?? startTangent(previous, start));
     case "catmullRom":
       return createCatmullRomCubicSegment(previous ?? start, start, end);
     case "basis":
@@ -1718,6 +1766,64 @@ function getPathPointBeforeEnd(node: PathNode): Point {
   return node.segments[node.segments.length - 2]?.to ?? node.start;
 }
 
+export function getPathEndTangent(node: PathNode): Point {
+  const lastSegment = node.segments.at(-1);
+
+  if (!lastSegment) {
+    return { x: 1, y: 0 };
+  }
+
+  const start = node.segments.length < 2 ? node.start : node.segments[node.segments.length - 2]?.to ?? node.start;
+
+  return segmentEndTangent(start, lastSegment);
+}
+
+function segmentEndTangent(start: Point, segment: Segment): Point {
+  if (segment.type === "line") {
+    return normalizeVector({
+      x: segment.to.x - start.x,
+      y: segment.to.y - start.y
+    });
+  }
+
+  if (segment.type === "quadratic") {
+    return normalizeVector({
+      x: segment.to.x - segment.control.x,
+      y: segment.to.y - segment.control.y
+    });
+  }
+
+  if (segment.type === "cubic") {
+    return normalizeVector({
+      x: segment.to.x - segment.control2.x,
+      y: segment.to.y - segment.control2.y
+    });
+  }
+
+  const parameters = arcCenterParameters(start, segment);
+
+  if (!parameters) {
+    return normalizeVector({
+      x: segment.to.x - start.x,
+      y: segment.to.y - start.y
+    });
+  }
+
+  const angle = parameters.startAngle + parameters.deltaAngle;
+  const cosPhi = Math.cos(parameters.phi);
+  const sinPhi = Math.sin(parameters.phi);
+  const direction = parameters.deltaAngle >= 0 ? 1 : -1;
+  const localDerivative = {
+    x: -parameters.rx * Math.sin(angle),
+    y: parameters.ry * Math.cos(angle)
+  };
+
+  return normalizeVector({
+    x: (localDerivative.x * cosPhi - localDerivative.y * sinPhi) * direction,
+    y: (localDerivative.x * sinPhi + localDerivative.y * cosPhi) * direction
+  });
+}
+
 function appendCatmullRomSegment(node: PathNode, end: Point): Segment[] {
   const points = [node.start, ...node.segments.map((segment) => segment.to)];
   const start = points.at(-1) ?? node.start;
@@ -1802,7 +1908,32 @@ function catmullRomControl2(start: Point, end: Point, next: Point): Point {
   };
 }
 
-function arcControlPoint(start: Point, segment: Extract<Segment, { type: "arc" }>): Point {
+function startTangent(previous: Point | undefined, start: Point): Point {
+  if (!previous) {
+    return { x: 1, y: 0 };
+  }
+
+  const dx = start.x - previous.x;
+  const dy = start.y - previous.y;
+  const length = Math.hypot(dx, dy);
+
+  if (length < 0.001) {
+    return { x: 1, y: 0 };
+  }
+
+  return {
+    x: dx / length,
+    y: dy / length
+  };
+}
+
+export function arcControlPoint(start: Point, segment: Extract<Segment, { type: "arc" }>): Point {
+  const parameters = arcCenterParameters(start, segment);
+
+  if (parameters) {
+    return pointOnArc(parameters, 0.5);
+  }
+
   const end = segment.to;
   const mid = lerpPoint(start, end, 0.5);
   const dx = end.x - start.x;
@@ -1818,11 +1949,151 @@ function arcControlPoint(start: Point, segment: Extract<Segment, { type: "arc" }
   };
 }
 
+export function createArcSegmentFromControl(
+  start: Point,
+  end: Point,
+  control: Point
+): Extract<Segment, { type: "arc" }> {
+  const circularArc = circularArcThroughPoints(start, control, end);
+
+  if (circularArc) {
+    return circularArc;
+  }
+
+  return updateArcSegmentFromControl(start, defaultArcSegment(end), control);
+}
+
+export function createArcSegmentFromTangent(
+  start: Point,
+  end: Point,
+  tangent: Point
+): Extract<Segment, { type: "arc" }> {
+  const normalizedTangent = normalizeVector(tangent);
+  const normal = {
+    x: -normalizedTangent.y,
+    y: normalizedTangent.x
+  };
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const denominator = 2 * (dx * normal.x + dy * normal.y);
+
+  if (Math.abs(denominator) < 0.001) {
+    return createArcSegmentFromControl(start, end, midpoint(start, end, -0.35));
+  }
+
+  const signedRadius = (dx * dx + dy * dy) / denominator;
+  const center = {
+    x: start.x + normal.x * signedRadius,
+    y: start.y + normal.y * signedRadius
+  };
+  const radius = Math.max(1, Math.abs(signedRadius));
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+  const sweep = signedRadius >= 0;
+  const delta = sweep ? positiveAngle(endAngle - startAngle) : positiveAngle(startAngle - endAngle);
+
+  return {
+    type: "arc",
+    rx: radius,
+    ry: radius,
+    xAxisRotation: 0,
+    largeArc: delta > Math.PI,
+    sweep,
+    to: end
+  };
+}
+
+function normalizeVector(vector: Point): Point {
+  const length = Math.hypot(vector.x, vector.y);
+
+  if (length < 0.001) {
+    return { x: 1, y: 0 };
+  }
+
+  return {
+    x: vector.x / length,
+    y: vector.y / length
+  };
+}
+
+function defaultArcSegment(end: Point): Extract<Segment, { type: "arc" }> {
+  return {
+    type: "arc",
+    rx: 1,
+    ry: 1,
+    xAxisRotation: 0,
+    largeArc: false,
+    sweep: true,
+    to: end
+  };
+}
+
+function circularArcThroughPoints(
+  start: Point,
+  control: Point,
+  end: Point
+): Extract<Segment, { type: "arc" }> | undefined {
+  const determinant =
+    2 *
+    (start.x * (control.y - end.y) +
+      control.x * (end.y - start.y) +
+      end.x * (start.y - control.y));
+
+  if (Math.abs(determinant) < 0.001) {
+    return undefined;
+  }
+
+  const startLength = start.x * start.x + start.y * start.y;
+  const controlLength = control.x * control.x + control.y * control.y;
+  const endLength = end.x * end.x + end.y * end.y;
+  const center = {
+    x:
+      (startLength * (control.y - end.y) +
+        controlLength * (end.y - start.y) +
+        endLength * (start.y - control.y)) /
+      determinant,
+    y:
+      (startLength * (end.x - control.x) +
+        controlLength * (start.x - end.x) +
+        endLength * (control.x - start.x)) /
+      determinant
+  };
+  const radius = Math.max(1, Math.hypot(start.x - center.x, start.y - center.y));
+  const startAngle = Math.atan2(start.y - center.y, start.x - center.x);
+  const controlAngle = Math.atan2(control.y - center.y, control.x - center.x);
+  const endAngle = Math.atan2(end.y - center.y, end.x - center.x);
+  const clockwiseDelta = positiveAngle(endAngle - startAngle);
+  const clockwiseControlDelta = positiveAngle(controlAngle - startAngle);
+  const sweep = clockwiseControlDelta <= clockwiseDelta;
+  const delta = sweep ? clockwiseDelta : positiveAngle(startAngle - endAngle);
+
+  return {
+    type: "arc",
+    rx: radius,
+    ry: radius,
+    xAxisRotation: 0,
+    largeArc: delta > Math.PI,
+    sweep,
+    to: end
+  };
+}
+
+function positiveAngle(angle: number): number {
+  const fullTurn = Math.PI * 2;
+  return ((angle % fullTurn) + fullTurn) % fullTurn;
+}
+
 function updateArcSegmentFromControl(
   start: Point,
   segment: Extract<Segment, { type: "arc" }>,
   control: Point
 ): Extract<Segment, { type: "arc" }> {
+  const circularArc = circularArcThroughPoints(start, control, segment.to);
+
+  if (circularArc) {
+    return circularArc;
+  }
+
   const end = segment.to;
   const mid = lerpPoint(start, end, 0.5);
   const dx = end.x - start.x;
@@ -1988,7 +2259,7 @@ function isPointNearPath(point: Point, node: PathNode, tolerance: number): boole
   let current = node.start;
 
   for (const segment of node.segments) {
-    if (distanceToSegment(point, current, segment.to) <= tolerance) {
+    if (distanceToPathSegment(point, current, segment) <= tolerance) {
       return true;
     }
 
@@ -1996,6 +2267,39 @@ function isPointNearPath(point: Point, node: PathNode, tolerance: number): boole
   }
 
   return node.closed && distanceToSegment(point, current, node.start) <= tolerance;
+}
+
+function distanceToPathSegment(point: Point, start: Point, segment: Segment): number {
+  if (segment.type === "arc") {
+    return distanceToArcSegment(point, start, segment);
+  }
+
+  return distanceToSegment(point, start, segment.to);
+}
+
+function distanceToArcSegment(
+  point: Point,
+  start: Point,
+  segment: Extract<Segment, { type: "arc" }>
+): number {
+  const parameters = arcCenterParameters(start, segment);
+
+  if (!parameters) {
+    return distanceToSegment(point, start, segment.to);
+  }
+
+  const radius = Math.max(parameters.rx, parameters.ry);
+  const sampleCount = Math.max(16, Math.min(96, Math.ceil(Math.abs(parameters.deltaAngle) * radius / 8)));
+  let nearest = Number.POSITIVE_INFINITY;
+  let previous = start;
+
+  for (let index = 1; index <= sampleCount; index += 1) {
+    const current = index === sampleCount ? segment.to : pointOnArc(parameters, index / sampleCount);
+    nearest = Math.min(nearest, distanceToSegment(point, previous, current));
+    previous = current;
+  }
+
+  return nearest;
 }
 
 function distance(a: Point, b: Point): number {
