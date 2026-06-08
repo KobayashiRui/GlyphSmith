@@ -202,6 +202,8 @@ export function hitTest(
 ): NodeId | undefined {
   const tolerance = options.tolerance ?? 6;
 
+  // Canvas draws later siblings on top, so hit testing must walk siblings
+  // in the opposite order to match the visual layer stack.
   for (let index = document.root.children.length - 1; index >= 0; index -= 1) {
     const hit = hitTestNode(document.root.children[index], point, tolerance);
 
@@ -990,6 +992,7 @@ function hitTestNode(
   }
 
   if (node.type === "group") {
+    // Later children are visually in front of earlier children.
     for (let index = node.children.length - 1; index >= 0; index -= 1) {
       const hit = hitTestNode(node.children[index], point, tolerance);
 
@@ -1009,28 +1012,104 @@ function hitTestNode(
 }
 
 function isPointNearNode(node: GeometryNode, point: Point, tolerance: number): boolean {
+  const outlineTolerance = strokeHitTolerance(node, tolerance);
+
   switch (node.type) {
     case "rect":
-      return isPointInsideBounds(point, node) || isPointNearBounds(point, node, tolerance);
+      return hasVisibleFill(node) ? isPointInsideBounds(point, node) : isPointNearBounds(point, node, outlineTolerance);
     case "circle":
-      return Math.abs(distance(point, { x: node.cx, y: node.cy }) - node.r) <= tolerance;
+      return hasVisibleFill(node)
+        ? distance(point, { x: node.cx, y: node.cy }) <= node.r
+        : Math.abs(distance(point, { x: node.cx, y: node.cy }) - node.r) <= outlineTolerance;
     case "ellipse":
-      return isPointInsideBounds(point, {
-        x: node.cx - node.rx,
-        y: node.cy - node.ry,
-        width: node.rx * 2,
-        height: node.ry * 2
-      });
+      return hasVisibleFill(node) ? isPointInsideEllipse(point, node) : isPointNearEllipse(point, node, outlineTolerance);
     case "line":
-      return distanceToSegment(point, { x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }) <= tolerance;
+      return distanceToSegment(point, { x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 }) <= outlineTolerance;
     case "polygon":
+      return hasVisibleFill(node)
+        ? isPointInsidePolygon(point, node.points) || isPointNearPolyline(point, node.points, true, outlineTolerance)
+        : isPointNearPolyline(point, node.points, true, outlineTolerance);
     case "polyline":
-      return isPointNearPolyline(point, node.points, node.type === "polygon", tolerance);
+      return isPointNearPolyline(point, node.points, false, outlineTolerance);
     case "path":
-      return isPointNearPath(point, node, tolerance);
+      return (
+        (hasVisibleFill(node) && node.closed && isPointInsidePolygon(point, pathRenderPoints(node))) ||
+        isPointNearPath(point, node, outlineTolerance)
+      );
     case "group":
       return false;
   }
+}
+
+function hasVisibleFill(node: GeometryNode): boolean {
+  return Boolean(node.style?.fill && node.style.fill !== "none");
+}
+
+function hasVisibleStroke(node: GeometryNode): boolean {
+  return node.style?.stroke !== "none";
+}
+
+function strokeHitTolerance(node: GeometryNode, tolerance: number): number {
+  if (!hasVisibleStroke(node)) {
+    return tolerance;
+  }
+
+  return tolerance + Math.max(0, (node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0) / 2);
+}
+
+function isPointInsideEllipse(
+  point: Point,
+  ellipse: Extract<GeometryNode, { type: "ellipse" }>
+): boolean {
+  if (ellipse.rx <= 0 || ellipse.ry <= 0) {
+    return false;
+  }
+
+  const normalizedX = (point.x - ellipse.cx) / ellipse.rx;
+  const normalizedY = (point.y - ellipse.cy) / ellipse.ry;
+
+  return normalizedX * normalizedX + normalizedY * normalizedY <= 1;
+}
+
+function isPointNearEllipse(
+  point: Point,
+  ellipse: Extract<GeometryNode, { type: "ellipse" }>,
+  tolerance: number
+): boolean {
+  if (ellipse.rx <= 0 || ellipse.ry <= 0) {
+    return false;
+  }
+
+  const angle = Math.atan2((point.y - ellipse.cy) / ellipse.ry, (point.x - ellipse.cx) / ellipse.rx);
+  const edgePoint = {
+    x: ellipse.cx + Math.cos(angle) * ellipse.rx,
+    y: ellipse.cy + Math.sin(angle) * ellipse.ry
+  };
+
+  return distance(point, edgePoint) <= tolerance;
+}
+
+function isPointInsidePolygon(point: Point, polygon: Point[]): boolean {
+  let inside = false;
+
+  for (let index = 0, previousIndex = polygon.length - 1; index < polygon.length; previousIndex = index, index += 1) {
+    const current = polygon[index];
+    const previous = polygon[previousIndex];
+
+    if (!current || !previous) {
+      continue;
+    }
+
+    const intersects =
+      current.y > point.y !== previous.y > point.y &&
+      point.x < ((previous.x - current.x) * (point.y - current.y)) / (previous.y - current.y) + current.x;
+
+    if (intersects) {
+      inside = !inside;
+    }
+  }
+
+  return inside;
 }
 
 function getNodeBoundsInTree(node: GeometryNode, nodeId: NodeId): Bounds | undefined {
@@ -2134,38 +2213,48 @@ function midpoint(start: Point, end: Point, perpendicularScale: number): Point {
 }
 
 function boundsForNode(node: GeometryNode): Bounds | undefined {
+  let bounds: Bounds | undefined;
+
   switch (node.type) {
     case "group":
       return mergeBounds(node.children.map(boundsForNode).filter(isBounds));
     case "rect":
-      return {
+      bounds = {
         x: node.x,
         y: node.y,
         width: node.width,
         height: node.height
       };
+      break;
     case "circle":
-      return {
+      bounds = {
         x: node.cx - node.r,
         y: node.cy - node.r,
         width: node.r * 2,
         height: node.r * 2
       };
+      break;
     case "ellipse":
-      return {
+      bounds = {
         x: node.cx - node.rx,
         y: node.cy - node.ry,
         width: node.rx * 2,
         height: node.ry * 2
       };
+      break;
     case "line":
-      return normalizeBounds({ x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 });
+      bounds = normalizeBounds({ x: node.x1, y: node.y1 }, { x: node.x2, y: node.y2 });
+      break;
     case "polygon":
     case "polyline":
-      return mergeBounds(node.points.map((point) => ({ ...point, width: 0, height: 0 })));
+      bounds = mergeBounds(node.points.map((point) => ({ ...point, width: 0, height: 0 })));
+      break;
     case "path":
-      return mergeBounds(pathRenderPoints(node).map((point) => ({ ...point, width: 0, height: 0 })));
+      bounds = mergeBounds(pathRenderPoints(node).map((point) => ({ ...point, width: 0, height: 0 })));
+      break;
   }
+
+  return expandBoundsForStroke(node, bounds);
 }
 
 function pathRenderPoints(node: PathNode): Point[] {
@@ -2272,6 +2361,21 @@ function mergeBounds(boundsList: Bounds[]): Bounds | undefined {
   };
 }
 
+function expandBoundsForStroke(node: GeometryNode, bounds: Bounds | undefined): Bounds | undefined {
+  if (!bounds || !hasVisibleStroke(node)) {
+    return bounds;
+  }
+
+  const padding = Math.max(0, (node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0) / 2);
+
+  return {
+    x: bounds.x - padding,
+    y: bounds.y - padding,
+    width: bounds.width + padding * 2,
+    height: bounds.height + padding * 2
+  };
+}
+
 function isBounds(bounds: Bounds | undefined): bounds is Bounds {
   return Boolean(bounds);
 }
@@ -2342,7 +2446,19 @@ function distanceToPathSegment(point: Point, start: Point, segment: Segment): nu
     return distanceToArcSegment(point, start, segment);
   }
 
-  return distanceToSegment(point, start, segment.to);
+  if (segment.type === "line") {
+    return distanceToSegment(point, start, segment.to);
+  }
+
+  let nearest = Infinity;
+  let previous = start;
+
+  for (const current of samplePathSegment(start, segment)) {
+    nearest = Math.min(nearest, distanceToSegment(point, previous, current));
+    previous = current;
+  }
+
+  return nearest;
 }
 
 function distanceToArcSegment(
