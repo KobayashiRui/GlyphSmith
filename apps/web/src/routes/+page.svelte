@@ -85,6 +85,7 @@
 	let settingsOpen = $state(false);
 	let layerDragStartProject: GlyphSmithProject | undefined;
 	let pageContextMenu = $state<{ pageId: string; x: number; y: number } | undefined>();
+	let pageTooltip = $state<{ text: string; x: number; y: number } | undefined>();
 	let renamingPageId = $state<string | undefined>();
 	let renamingPageName = $state('');
 	let pageRenameInput = $state<HTMLInputElement | undefined>();
@@ -1070,6 +1071,7 @@
 	function openPageContextMenu(event: MouseEvent, pageId: string) {
 		event.preventDefault();
 		event.stopPropagation();
+		closePageTooltip();
 		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
 		const page = project.pages.find((candidate) => candidate.id === pageId);
 		pageContextMenu = {
@@ -1085,6 +1087,24 @@
 		pageContextMenu = undefined;
 		renamingPageId = undefined;
 		renamingPageName = '';
+	}
+
+	function showPageTooltip(event: MouseEvent | FocusEvent, text: string) {
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const maxTooltipWidth = 260;
+		const gutter = 12;
+		const minX = gutter + maxTooltipWidth / 2;
+		const maxX = window.innerWidth - gutter - maxTooltipWidth / 2;
+
+		pageTooltip = {
+			text,
+			x: Math.min(Math.max(rect.left + rect.width / 2, minX), maxX),
+			y: rect.top
+		};
+	}
+
+	function closePageTooltip() {
+		pageTooltip = undefined;
 	}
 
 	function startPageContextRename() {
@@ -2145,16 +2165,20 @@
 			<footer class="page-strip" aria-label="Pages">
 				<div class="page-strip-list">
 					{#each project.pages as page, pageIndex}
+						{@const pageName = page.name || `Page ${pageIndex + 1}`}
 						<button
 							aria-label={`${page.name}, ${page.document.width} x ${page.document.height}px`}
 							class:active={page.id === project.activePageId}
-							title={`${page.name} · ${page.document.width} x ${page.document.height}px`}
 							type="button"
 							onclick={() => setActivePage(page.id)}
 							oncontextmenu={(event) => openPageContextMenu(event, page.id)}
+							onmouseenter={(event) => showPageTooltip(event, pageName)}
+							onfocus={(event) => showPageTooltip(event, pageName)}
+							onmouseleave={closePageTooltip}
+							onblur={closePageTooltip}
 						>
 							<PageThumbnail document={page.document} />
-							<span class="page-name">{page.name || `Page ${pageIndex + 1}`}</span>
+							<span class="page-name">{pageName}</span>
 						</button>
 					{/each}
 					<button class="page-add-button" type="button" aria-label="New page" title="New page" onclick={addPage}>
@@ -2162,6 +2186,16 @@
 					</button>
 				</div>
 			</footer>
+
+			{#if pageTooltip}
+				<div
+					class="page-floating-tooltip"
+					style={`left: ${pageTooltip.x}px; top: ${pageTooltip.y}px;`}
+					role="tooltip"
+				>
+					{pageTooltip.text}
+				</div>
+			{/if}
 
 			{#if pageContextMenu && pageContextMenuPage}
 				<div
