@@ -75,7 +75,9 @@ export function readMcpResource(project: GlyphSmithProject, selection: Selection
               "",
               "Use GlyphSmith MCP for active `.gs.json` editor sessions.",
               "Read Geometry AST resources and apply small patch operations.",
-              "Do not rewrite raw SVG strings for active editor changes."
+              "Do not rewrite raw SVG strings for active editor changes.",
+              "",
+              "Before drawing or editing generated artwork, read `glyphsmith://project` or call `project_get` and follow `project.projectPrompt` when it is present."
             ].join("\n")
           }
         ]

@@ -10,6 +10,7 @@ GlyphSmith is a Geometry AST based SVG editor. Treat SVG text as import/export f
 * Prefer patch operations for small edits.
 * Keep one page equivalent to one SVG document.
 * Preserve `.gs.json` project structure and page metadata.
+* Check `projectPrompt` before creating or editing generated artwork, and follow it as the project-wide art direction when present.
 * Use MCP tools for an active editor session when they are available.
 * Do not directly edit `.gs.json` while the GlyphSmith CLI host is running. Use MCP so the editor, revision, and WebSocket sync stay consistent.
 * Direct `.gs.json` edits are acceptable for offline workflows when no active editor/MCP host is available.

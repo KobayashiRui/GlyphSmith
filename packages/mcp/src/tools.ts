@@ -28,7 +28,7 @@ export function mcpTools() {
   return [
     {
       name: "project_get",
-      description: "Read the active GlyphSmith project.",
+      description: "Read the active GlyphSmith project, including projectPrompt when present.",
       inputSchema: { type: "object", properties: {} }
     },
     {

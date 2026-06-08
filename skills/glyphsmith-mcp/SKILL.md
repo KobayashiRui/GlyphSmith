@@ -16,6 +16,7 @@ Use this skill when an active GlyphSmith editor session exposes a local MCP endp
 * Do not directly edit `.gs.json` while the GlyphSmith CLI host is active. Use MCP tools so project revisions and WebSocket clients stay synchronized.
 * Prefer page-scoped operations.
 * Keep comments as first-class instructions for agents.
+* Before drawing or editing generated artwork, read `glyphsmith://project` or call `project_get` and follow `project.projectPrompt` when present.
 
 ## Expected Local Host
 
@@ -95,11 +96,12 @@ Pass `revision` when mutating if the current revision is known.
 
 When asked to draw SVG content:
 
-1. Call `document_get` to read the active document and revision.
-2. Use `document_update` if the requested canvas size differs.
-3. Use `patches_apply` or `node_insert` to add Geometry AST nodes.
-4. Re-read with `document_get`.
-5. Use `svg_export` when the user asks for SVG output.
+1. Call `project_get` or read `glyphsmith://project` to check `projectPrompt` and revision.
+2. Call `document_get` to read the active document when needed.
+3. Use `document_update` if the requested canvas size differs.
+4. Use `patches_apply` or `node_insert` to add Geometry AST nodes.
+5. Re-read with `document_get`.
+6. Use `svg_export` when the user asks for SVG output.
 
 Example `patches_apply` arguments:
 
