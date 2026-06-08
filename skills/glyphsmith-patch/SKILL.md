@@ -1,0 +1,202 @@
+# GlyphSmith Patch
+
+Use this skill when creating patch operations for GlyphSmith Geometry AST.
+
+## Patch Principles
+
+Prefer targeted patches.
+
+```json
+{
+  "op": "update",
+  "target": "node-12",
+  "changes": {
+    "strokeWidth": 3
+  }
+}
+```
+
+Avoid replacing a whole document for a local edit.
+
+## Core Operations
+
+Create a node with `insert`.
+
+```json
+{
+  "op": "insert",
+  "parentId": "root",
+  "node": {
+    "id": "rect-1",
+    "type": "rect",
+    "x": 120,
+    "y": 96,
+    "width": 240,
+    "height": 160,
+    "rx": 12,
+    "style": {
+      "fill": "#2563eb",
+      "stroke": "#dbeafe",
+      "strokeWidth": 4
+    }
+  }
+}
+```
+
+Update geometry or style with `update`.
+
+```json
+{
+  "op": "update",
+  "target": "rect-1",
+  "changes": {
+    "width": 280,
+    "style": {
+      "fill": "#0f172a",
+      "stroke": "#38bdf8",
+      "strokeWidth": 3
+    }
+  }
+}
+```
+
+Delete a node with `delete`.
+
+```json
+{
+  "op": "delete",
+  "target": "rect-1"
+}
+```
+
+Move a node with `move`.
+
+```json
+{
+  "op": "move",
+  "target": "rect-1",
+  "dx": 32,
+  "dy": -16
+}
+```
+
+Resize or rename a document with `updateDocument`.
+
+```json
+{
+  "op": "updateDocument",
+  "changes": {
+    "width": 1024,
+    "height": 1024,
+    "name": "Icon"
+  }
+}
+```
+
+## Drawing Nodes
+
+Use stable, unique ids. Prefer descriptive ids such as `sun-body`, `badge-shadow`, or `logo-mark-path`.
+
+Rectangle:
+
+```json
+{
+  "id": "card-bg",
+  "type": "rect",
+  "x": 64,
+  "y": 64,
+  "width": 384,
+  "height": 240,
+  "rx": 24,
+  "ry": 24,
+  "style": {
+    "fill": "#111827",
+    "stroke": "#38bdf8",
+    "strokeWidth": 3
+  }
+}
+```
+
+Ellipse:
+
+```json
+{
+  "id": "orbit",
+  "type": "ellipse",
+  "cx": 256,
+  "cy": 256,
+  "rx": 180,
+  "ry": 72,
+  "style": {
+    "fill": "none",
+    "stroke": "#a78bfa",
+    "strokeWidth": 6
+  }
+}
+```
+
+Line:
+
+```json
+{
+  "id": "divider",
+  "type": "line",
+  "x1": 96,
+  "y1": 256,
+  "x2": 416,
+  "y2": 256,
+  "style": {
+    "stroke": "#f97316",
+    "strokeWidth": 8
+  }
+}
+```
+
+Cubic Bezier path:
+
+```json
+{
+  "id": "wave",
+  "type": "path",
+  "start": { "x": 96, "y": 320 },
+  "closed": false,
+  "segments": [
+    {
+      "type": "cubic",
+      "control1": { "x": 160, "y": 160 },
+      "control2": { "x": 320, "y": 480 },
+      "to": { "x": 416, "y": 280 }
+    }
+  ],
+  "style": {
+    "fill": "none",
+    "stroke": "#22c55e",
+    "strokeWidth": 10
+  }
+}
+```
+
+Closed triangle path:
+
+```json
+{
+  "id": "triangle",
+  "type": "path",
+  "start": { "x": 256, "y": 96 },
+  "closed": true,
+  "segments": [
+    { "type": "line", "to": { "x": 416, "y": 384 } },
+    { "type": "line", "to": { "x": 96, "y": 384 } }
+  ],
+  "style": {
+    "fill": "#facc15",
+    "stroke": "#78350f",
+    "strokeWidth": 6
+  }
+}
+```
+
+## Responsibilities
+
+Agents describe intent and patch targets.
+The Geometry Kernel should perform geometry-heavy operations such as moving, scaling, smoothing, mirroring, offsetting, or rounding.

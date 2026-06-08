@@ -67,7 +67,12 @@
 	let undoStack = $state<GlyphSmithProject[]>([]);
 	let redoStack = $state<GlyphSmithProject[]>([]);
 	let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>(initialSaveStatusFromData());
+	let hostStatus = $state<'disabled' | 'connecting' | 'connected' | 'error'>('disabled');
 	let liveEditStartProject: GlyphSmithProject | undefined;
+	let hostSocket: WebSocket | undefined;
+	let hostSyncTimer: ReturnType<typeof setTimeout> | undefined;
+	let hostReconnectTimer: ReturnType<typeof setTimeout> | undefined;
+	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
@@ -106,8 +111,14 @@
 		draw();
 	});
 
+	$effect(() => {
+		selectedNodeIds;
+		sendSelectionToHost();
+	});
+
 	onMount(() => {
 		context = canvas.getContext('2d') ?? undefined;
+		connectHostWebSocket();
 
 		const resize = () => {
 			const rect = canvas.getBoundingClientRect();
@@ -171,6 +182,7 @@
 		window.addEventListener('keyup', handleKeyUp);
 
 		return () => {
+			closeHostWebSocket();
 			window.removeEventListener('resize', resize);
 			window.removeEventListener('keydown', handleKeyDown);
 			window.removeEventListener('keyup', handleKeyUp);
@@ -694,6 +706,7 @@
 		project = previous;
 		cancelDraft();
 		selectedNodeIds = [];
+		markProjectChanged();
 	}
 
 	function redo() {
@@ -708,6 +721,7 @@
 		project = next;
 		cancelDraft();
 		selectedNodeIds = [];
+		markProjectChanged();
 	}
 
 	function deleteSelection() {
@@ -742,6 +756,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		markProjectChanged();
 	}
 
 	function addPage() {
@@ -763,6 +778,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		markProjectChanged();
 	}
 
 	function duplicatePage() {
@@ -789,6 +805,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		markProjectChanged();
 	}
 
 	function deleteActivePage() {
@@ -814,6 +831,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		markProjectChanged();
 	}
 
 	function nextPageId(): string {
@@ -880,6 +898,10 @@
 	}
 
 	async function saveProjectToDisk() {
+		if (sendProjectToHost()) {
+			return;
+		}
+
 		saveStatus = 'saving';
 
 		try {
@@ -894,6 +916,209 @@
 			saveStatus = response.ok ? 'saved' : 'error';
 		} catch {
 			saveStatus = 'error';
+		}
+	}
+
+	function connectHostWebSocket() {
+		if (!data.hostWebSocketUrl) {
+			hostStatus = 'disabled';
+			return;
+		}
+
+		closingHostSocket = false;
+		hostStatus = 'connecting';
+
+		const socket = new WebSocket(data.hostWebSocketUrl);
+		hostSocket = socket;
+
+		socket.onopen = () => {
+			if (hostSocket !== socket) {
+				return;
+			}
+
+			hostStatus = 'connected';
+			saveStatus = 'saved';
+			sendSelectionToHost();
+		};
+
+		socket.onmessage = (event) => {
+			if (typeof event.data !== 'string') {
+				return;
+			}
+
+			handleHostMessage(event.data);
+		};
+
+		socket.onclose = () => {
+			if (hostSocket !== socket) {
+				return;
+			}
+
+			hostSocket = undefined;
+			hostStatus = closingHostSocket ? 'disabled' : 'error';
+
+			if (!closingHostSocket) {
+				hostReconnectTimer = setTimeout(connectHostWebSocket, 1000);
+			}
+		};
+
+		socket.onerror = () => {
+			hostStatus = 'error';
+		};
+	}
+
+	function closeHostWebSocket() {
+		closingHostSocket = true;
+
+		if (hostReconnectTimer) {
+			clearTimeout(hostReconnectTimer);
+			hostReconnectTimer = undefined;
+		}
+
+		if (hostSyncTimer) {
+			clearTimeout(hostSyncTimer);
+			hostSyncTimer = undefined;
+		}
+
+		hostSocket?.close();
+		hostSocket = undefined;
+	}
+
+	function handleHostMessage(rawMessage: string) {
+		let message: unknown;
+
+		try {
+			message = JSON.parse(rawMessage);
+		} catch {
+			return;
+		}
+
+		if (!isHostMessage(message)) {
+			return;
+		}
+
+		if (message.type === 'project:ack') {
+			saveStatus = 'saved';
+			return;
+		}
+
+		if (message.type === 'project:snapshot') {
+			if (projectsEqual(project, message.project)) {
+				saveStatus = 'saved';
+				return;
+			}
+
+			applyRemoteProject(message.project);
+		}
+	}
+
+	function isHostMessage(
+		message: unknown
+	): message is { type: 'project:ack' } | { type: 'project:snapshot'; project: GlyphSmithProject } {
+		return Boolean(
+			message &&
+				typeof message === 'object' &&
+				'type' in message &&
+				((message.type === 'project:ack') ||
+					(message.type === 'project:snapshot' && 'project' in message && isProjectLike(message.project)))
+		);
+	}
+
+	function isProjectLike(value: unknown): value is GlyphSmithProject {
+		return Boolean(
+			value &&
+				typeof value === 'object' &&
+				'schemaVersion' in value &&
+				value.schemaVersion === 1 &&
+				'pages' in value &&
+				Array.isArray(value.pages)
+		);
+	}
+
+	function applyRemoteProject(nextProject: GlyphSmithProject) {
+		project = structuredClone(nextProject) as GlyphSmithProject;
+		nextNodeIndex = Math.max(nextNodeIndex, nextNodeIndexFromProject(project));
+		undoStack = [];
+		redoStack = [];
+		selectedNodeIds = [];
+		finishPathDrawing();
+		saveStatus = 'saved';
+	}
+
+	function markProjectChanged() {
+		if (!data.hostWebSocketUrl || !hostSocket || hostSocket.readyState !== WebSocket.OPEN) {
+			saveStatus = data.projectFile ? 'idle' : saveStatus;
+			return;
+		}
+
+		saveStatus = 'saving';
+
+		if (hostSyncTimer) {
+			clearTimeout(hostSyncTimer);
+		}
+
+		hostSyncTimer = setTimeout(() => {
+			hostSyncTimer = undefined;
+			sendProjectToHost();
+		}, 250);
+	}
+
+	function sendProjectToHost() {
+		if (!hostSocket || hostSocket.readyState !== WebSocket.OPEN) {
+			return false;
+		}
+
+		saveStatus = 'saving';
+		hostSocket.send(
+			JSON.stringify({
+				type: 'project:update',
+				project: cloneProject(project)
+			})
+		);
+
+		return true;
+	}
+
+	function sendSelectionToHost() {
+		if (!hostSocket || hostSocket.readyState !== WebSocket.OPEN) {
+			return;
+		}
+
+		hostSocket.send(
+			JSON.stringify({
+				type: 'selection:update',
+				nodeIds: [...selectedNodeIds]
+			})
+		);
+	}
+
+	function projectsEqual(left: GlyphSmithProject, right: GlyphSmithProject) {
+		return JSON.stringify($state.snapshot(left)) === JSON.stringify(right);
+	}
+
+	function nextNodeIndexFromProject(sourceProject: GlyphSmithProject) {
+		let maxIndex = 0;
+
+		for (const page of sourceProject.pages) {
+			walkNode(page.document.root, (node) => {
+				const match = /-(\d+)$/.exec(node.id);
+
+				if (match) {
+					maxIndex = Math.max(maxIndex, Number(match[1]));
+				}
+			});
+		}
+
+		return maxIndex + 1;
+	}
+
+	function walkNode(node: GeometryNode, visit: (node: GeometryNode) => void) {
+		visit(node);
+
+		if ('children' in node && Array.isArray(node.children)) {
+			for (const child of node.children) {
+				walkNode(child, visit);
+			}
 		}
 	}
 
@@ -917,8 +1142,9 @@
 							document
 						}
 					: page
-			)
+				)
 		};
+		markProjectChanged();
 	}
 
 	function draw() {
@@ -1342,6 +1568,7 @@
 			<span>{geometryDocument.root.children.length} nodes</span>
 			<span>{Math.round(viewport.zoom * 100)}%</span>
 			<span>{geometryDocument.width} x {geometryDocument.height}px</span>
+			<span class:connected={hostStatus === 'connected'} class="host-status">Host: {hostStatus}</span>
 		</div>
 	</header>
 
