@@ -42,7 +42,10 @@
 	} from '@glyphsmith/editor';
 	import { applyPatch, findNode } from '@glyphsmith/kernel';
 	import { exportToSvg } from '@glyphsmith/svg';
+	import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/svelte';
+	import { isSortable } from '@dnd-kit/svelte/sortable';
 	import PageThumbnail from '$lib/PageThumbnail.svelte';
+	import LayerRow from './LayerRow.svelte';
 	import { onMount } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -80,6 +83,11 @@
 	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
 	let settingsOpen = $state(false);
+	let layerDragStartProject: GlyphSmithProject | undefined;
+
+	type DragStartEvent = Parameters<NonNullable<DragDropEventHandlers['onDragStart']>>[0];
+	type DragOverEvent = Parameters<NonNullable<DragDropEventHandlers['onDragOver']>>[0];
+	type DragEndEvent = Parameters<NonNullable<DragDropEventHandlers['onDragEnd']>>[0];
 
 	const uiColors = {
 		primary: '#4f8ef7',
@@ -99,6 +107,7 @@
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
+	const layerNodes = $derived([...geometryDocument.root.children].reverse());
 	const selectedNode = $derived(
 		selectedNodeIds[0] ? findNode(geometryDocument, selectedNodeIds[0]) : undefined
 	);
@@ -990,6 +999,76 @@
 		markProjectChanged();
 	}
 
+	function handleLayerSortStart(event: DragStartEvent) {
+		if (!isSortable(event.operation.source)) {
+			return;
+		}
+
+		layerDragStartProject = cloneProject(project);
+	}
+
+	function handleLayerSortOver(event: DragOverEvent) {
+		const { source, target } = event.operation;
+
+		if (!isSortable(source) || !isSortable(target) || source.index === target.index) {
+			return;
+		}
+
+		reorderRootLayer(source.index, target.index);
+	}
+
+	function handleLayerSortEnd(event: DragEndEvent) {
+		const startProject = layerDragStartProject;
+		layerDragStartProject = undefined;
+
+		if (!startProject) {
+			return;
+		}
+
+		if (event.canceled) {
+			project = startProject;
+			markProjectChanged();
+			return;
+		}
+
+		if (projectsEqual(project, startProject)) {
+			return;
+		}
+
+		undoStack = [...undoStack, startProject];
+		redoStack = [];
+	}
+
+	function reorderRootLayer(sourceUiIndex: number, targetUiIndex: number) {
+		const children = [...geometryDocument.root.children];
+		const sourceIndex = layerUiIndexToAstIndex(sourceUiIndex, children.length);
+		const targetIndex = layerUiIndexToAstIndex(targetUiIndex, children.length);
+
+		if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+			return;
+		}
+
+		const [sourceNode] = children.splice(sourceIndex, 1);
+
+		if (!sourceNode) {
+			return;
+		}
+
+		children.splice(targetIndex, 0, sourceNode);
+
+		updateActiveDocument({
+			...geometryDocument,
+			root: {
+				...geometryDocument.root,
+				children
+			}
+		});
+	}
+
+	function layerUiIndexToAstIndex(index: number, length: number) {
+		return length - 1 - index;
+	}
+
 	function nextPageId(): string {
 		let index = project.pages.length + 1;
 
@@ -1846,8 +1925,6 @@
 				);
 			} else if (segment.type === 'arc') {
 				drawArcSegment(canvasContext, current, segment);
-			} else {
-				canvasContext.lineTo(segment.to.x, segment.to.y);
 			}
 
 			current = segment.to;
@@ -1896,25 +1973,27 @@
 
 	<main class="workspace">
 		<aside class="sidebar">
-			<div class="panel">
-				<h2>Layers</h2>
+			<h2 class="sidebar-title">Layers</h2>
+			<DragDropProvider
+				onDragStart={handleLayerSortStart}
+				onDragOver={handleLayerSortOver}
+				onDragEnd={handleLayerSortEnd}
+			>
 				<div class="layer-list">
-					{#if geometryDocument.root.children.length === 0}
+					{#if layerNodes.length === 0}
 						<div class="empty-row">No nodes</div>
 					{/if}
 
-					{#each geometryDocument.root.children as node}
-						<button
-							class:selected={selectedNodeIds.includes(node.id)}
-							type="button"
-							onclick={() => (selectedNodeIds = [node.id])}
-						>
-							<span>{node.name ?? node.type}</span>
-							<code>{node.id}</code>
-						</button>
+					{#each layerNodes as node, index (node.id)}
+						<LayerRow
+							{node}
+							{index}
+							selected={selectedNodeIds.includes(node.id)}
+							onSelect={(nodeId) => (selectedNodeIds = [nodeId])}
+						/>
 					{/each}
 				</div>
-			</div>
+			</DragDropProvider>
 		</aside>
 
 		<div class="editor-stage">

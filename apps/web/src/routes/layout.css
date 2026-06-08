@@ -221,11 +221,20 @@ button {
 	color: var(--color-gs-text-inverse);
 }
 
+.sidebar-title {
+	margin: 0;
+	color: var(--color-gs-text-muted);
+	font-size: 11px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
 .layer-list {
 	display: flex;
-	max-height: 280px;
+	min-height: 0;
 	flex-direction: column;
-	gap: 6px;
+	gap: 4px;
 	overflow: auto;
 }
 
@@ -245,10 +254,27 @@ button {
 	text-align: left;
 }
 
+.layer-list button {
+	cursor: grab;
+}
+
+.layer-list button:active {
+	cursor: grabbing;
+}
+
 .layer-list button.selected {
 	border-color: var(--color-gs-primary-hover);
 	background: var(--color-gs-primary-soft);
 	color: var(--color-gs-text-inverse);
+}
+
+.layer-list button.dragging {
+	opacity: 0.48;
+}
+
+.layer-list button.drop-target {
+	border-color: var(--color-gs-primary);
+	box-shadow: inset 0 2px 0 var(--color-gs-primary);
 }
 
 .layer-list code {
