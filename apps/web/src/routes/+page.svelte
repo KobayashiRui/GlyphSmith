@@ -2208,8 +2208,14 @@
 		</div>
 
 		<aside class="inspector">
-			<div class="panel">
-				<h2>Page Settings</h2>
+			<details class="inspector-section" open>
+				<summary>
+					<span>Page Settings</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
 				<div class="field-grid">
 					<label for="document-name">Name</label>
 					<input
@@ -2246,10 +2252,16 @@
 						<span>px</span>
 					</div>
 				</div>
-			</div>
+			</details>
 
-			<div class="panel">
-				<h2>Page Background</h2>
+			<details class="inspector-section" open>
+				<summary>
+					<span>Page Background</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
 				<div class="background-options" aria-label="Page background">
 					{#each ['white', 'gray', 'black', 'alpha'] as preset}
 						<button
@@ -2261,10 +2273,16 @@
 						></button>
 					{/each}
 				</div>
-			</div>
+			</details>
 
-			<div class="panel">
-				<h2>Zoom Settings</h2>
+			<details class="inspector-section" open>
+				<summary>
+					<span>Zoom Settings</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
 				<div class="field-grid compact">
 					<label for="zoom-percent">Scale</label>
 					<div class="zoom-row">
@@ -2283,10 +2301,16 @@
 						<button class="secondary-button fit-button" type="button" onclick={fitCanvasToDocument}>Fit</button>
 					</div>
 				</div>
-			</div>
+			</details>
 
-			<div class="panel">
-				<h2>Geometry</h2>
+			<details class="inspector-section" open>
+				<summary>
+					<span>Geometry</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
 				{#if selectedNode}
 					<div class="field-grid">
 						{#if selectedNode.type === 'rect'}
@@ -2477,10 +2501,16 @@
 				{:else}
 					<div class="empty-row">No selection</div>
 				{/if}
-			</div>
+			</details>
 
-			<div class="panel">
-				<h2>Appearance</h2>
+			<details class="inspector-section" open>
+				<summary>
+					<span>Appearance</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
 				{#if selectedNode}
 					<div class="field-grid">
 						<label for="fill">Fill</label>
@@ -2545,7 +2575,7 @@
 				{:else}
 					<div class="empty-row">No selection</div>
 				{/if}
-			</div>
+			</details>
 
 		</aside>
 	</main>
