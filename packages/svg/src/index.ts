@@ -78,12 +78,16 @@ function renderStyle(style: NodeStyle | undefined): string {
   const fill = style?.fill ?? "none";
   const stroke = style?.stroke ?? "#111827";
   const strokeWidth = style?.strokeWidth ?? 2;
+  const strokeLinecap = style?.strokeLinecap;
+  const strokeLinejoin = style?.strokeLinejoin;
   const opacity = style?.opacity;
 
   return [
     ` fill="${escapeAttribute(fill)}"`,
     ` stroke="${escapeAttribute(stroke)}"`,
     ` stroke-width="${formatNumber(strokeWidth)}"`,
+    strokeLinecap === undefined ? "" : ` stroke-linecap="${escapeAttribute(strokeLinecap)}"`,
+    strokeLinejoin === undefined ? "" : ` stroke-linejoin="${escapeAttribute(strokeLinejoin)}"`,
     opacity === undefined ? "" : ` opacity="${formatNumber(opacity)}"`
   ].join("");
 }

@@ -14,10 +14,16 @@ export type Bounds = {
 
 export type Paint = string | "none";
 
+export type StrokeLineCap = "butt" | "round" | "square";
+
+export type StrokeLineJoin = "arcs" | "bevel" | "miter" | "miter-clip" | "round";
+
 export type NodeStyle = {
   fill?: Paint;
   stroke?: Paint;
   strokeWidth?: number;
+  strokeLinecap?: StrokeLineCap;
+  strokeLinejoin?: StrokeLineJoin;
   opacity?: number;
 };
 

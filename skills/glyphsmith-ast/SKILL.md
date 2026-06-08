@@ -42,6 +42,18 @@ Segment shapes:
 }
 ```
 
+Stroke style supports SVG-style cap and join values:
+
+```json
+{
+  "fill": "none",
+  "stroke": "#111827",
+  "strokeWidth": 32,
+  "strokeLinecap": "round",
+  "strokeLinejoin": "round"
+}
+```
+
 ```json
 {
   "type": "cubic",

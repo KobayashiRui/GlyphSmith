@@ -723,7 +723,25 @@ function applyStyle(context: CanvasRenderingContext2D, style: NodeStyle | undefi
   context.fillStyle = style?.fill && style.fill !== "none" ? style.fill : "transparent";
   context.strokeStyle = style?.stroke && style.stroke !== "none" ? style.stroke : "transparent";
   context.lineWidth = style?.strokeWidth ?? 2;
+  context.lineCap = canvasLineCap(style?.strokeLinecap);
+  context.lineJoin = canvasLineJoin(style?.strokeLinejoin);
   context.globalAlpha = style?.opacity ?? 1;
+}
+
+function canvasLineCap(value: NodeStyle["strokeLinecap"] | undefined): CanvasLineCap {
+  if (value === "round" || value === "square") {
+    return value;
+  }
+
+  return "butt";
+}
+
+function canvasLineJoin(value: NodeStyle["strokeLinejoin"] | undefined): CanvasLineJoin {
+  if (value === "bevel" || value === "round") {
+    return value;
+  }
+
+  return "miter";
 }
 
 function paintCurrentPath(context: CanvasRenderingContext2D, style: NodeStyle | undefined): void {

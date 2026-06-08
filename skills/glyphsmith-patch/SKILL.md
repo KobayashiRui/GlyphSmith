@@ -171,7 +171,9 @@ Cubic Bezier path:
   "style": {
     "fill": "none",
     "stroke": "#22c55e",
-    "strokeWidth": 10
+    "strokeWidth": 10,
+    "strokeLinecap": "round",
+    "strokeLinejoin": "round"
   }
 }
 ```
