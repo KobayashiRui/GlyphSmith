@@ -171,11 +171,20 @@ export type GlyphSmithPage = {
   document: GeometryDocument;
 };
 
+export type ProjectSettings = {
+  defaultCanvas?: {
+    width: number;
+    height: number;
+  };
+};
+
 export type GlyphSmithProject = {
   schemaVersion: 1;
   id: string;
   name: string;
   activePageId: string;
+  projectPrompt?: string;
+  settings?: ProjectSettings;
   pages: GlyphSmithPage[];
   createdAt?: string;
   updatedAt?: string;
@@ -239,6 +248,7 @@ export type CreateProjectOptions = {
   name?: string;
   pageId?: string;
   documentId?: string;
+  projectPrompt?: string;
   width?: number;
   height?: number;
 };
@@ -291,6 +301,13 @@ export function createProject(options: CreateProjectOptions = {}): GlyphSmithPro
     id: options.id ?? "project-1",
     name: options.name ?? "Untitled Project",
     activePageId: firstPage.id,
+    projectPrompt: options.projectPrompt,
+    settings: {
+      defaultCanvas: {
+        width: options.width ?? 1024,
+        height: options.height ?? 768
+      }
+    },
     pages: [firstPage],
     createdAt: now,
     updatedAt: now
@@ -310,10 +327,37 @@ export function isGlyphSmithProject(value: unknown): value is GlyphSmithProject 
     return false;
   }
 
-  return (
-    value.pages.every(isGlyphSmithPage) &&
-    value.pages.some((page) => page.id === value.activePageId)
-  );
+  if ("projectPrompt" in value && value.projectPrompt !== undefined && typeof value.projectPrompt !== "string") {
+    return false;
+  }
+
+  if ("settings" in value && value.settings !== undefined && !isProjectSettings(value.settings)) {
+    return false;
+  }
+
+  return value.pages.every(isGlyphSmithPage) && value.pages.some((page) => page.id === value.activePageId);
+}
+
+function isProjectSettings(value: unknown): value is ProjectSettings {
+  if (!isRecord(value)) {
+    return false;
+  }
+
+  if ("defaultCanvas" in value && value.defaultCanvas !== undefined) {
+    const defaultCanvas = value.defaultCanvas;
+
+    return (
+      isRecord(defaultCanvas) &&
+      typeof defaultCanvas.width === "number" &&
+      Number.isFinite(defaultCanvas.width) &&
+      defaultCanvas.width >= 1 &&
+      typeof defaultCanvas.height === "number" &&
+      Number.isFinite(defaultCanvas.height) &&
+      defaultCanvas.height >= 1
+    );
+  }
+
+  return true;
 }
 
 function isGlyphSmithPage(value: unknown): value is GlyphSmithPage {

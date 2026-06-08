@@ -73,11 +73,13 @@
 	let saveStatus = $state<'idle' | 'saving' | 'saved' | 'error'>(initialSaveStatusFromData());
 	let hostStatus = $state<'disabled' | 'connecting' | 'connected' | 'error'>('disabled');
 	let liveEditStartProject: GlyphSmithProject | undefined;
+	let settingsEditStartProject: GlyphSmithProject | undefined;
 	let hostSocket: WebSocket | undefined;
 	let hostSyncTimer: ReturnType<typeof setTimeout> | undefined;
 	let hostReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
+	let settingsOpen = $state(false);
 
 	const uiColors = {
 		primary: '#4f8ef7',
@@ -155,6 +157,12 @@
 		};
 
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (settingsOpen && event.key === 'Escape') {
+				event.preventDefault();
+				closeProjectSettings();
+				return;
+			}
+
 			if (isTextInput(event.target)) {
 				return;
 			}
@@ -397,6 +405,61 @@
 				background: backgroundFromPreset(preset)
 			}
 		});
+	}
+
+	function updateProjectPrompt(value: string) {
+		project = {
+			...project,
+			projectPrompt: value,
+			updatedAt: new Date().toISOString()
+		};
+		markProjectChanged();
+	}
+
+	function updateDefaultCanvas(field: 'width' | 'height', event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const value = Math.max(1, Number(input.value));
+
+		if (!Number.isFinite(value)) {
+			return;
+		}
+
+		const current = projectDefaultCanvas();
+
+		project = {
+			...project,
+			settings: {
+				...project.settings,
+				defaultCanvas: {
+					...current,
+					[field]: value
+				}
+			},
+			updatedAt: new Date().toISOString()
+		};
+		markProjectChanged();
+	}
+
+	function projectDefaultCanvas() {
+		return {
+			width: project.settings?.defaultCanvas?.width ?? geometryDocument.width,
+			height: project.settings?.defaultCanvas?.height ?? geometryDocument.height
+		};
+	}
+
+	function openProjectSettings() {
+		settingsEditStartProject = cloneProject(project);
+		settingsOpen = true;
+	}
+
+	function closeProjectSettings() {
+		if (settingsEditStartProject && !projectsEqual(settingsEditStartProject, project)) {
+			undoStack = [...undoStack, settingsEditStartProject];
+			redoStack = [];
+		}
+
+		settingsEditStartProject = undefined;
+		settingsOpen = false;
 	}
 
 	function backgroundFromPreset(preset: BackgroundPreset): DocumentBackground {
@@ -853,11 +916,12 @@
 
 	function addPage() {
 		const pageId = nextPageId();
+		const defaultCanvas = projectDefaultCanvas();
 		const page = createPage({
 			pageId,
 			name: `Page ${project.pages.length + 1}`,
-			width: geometryDocument.width,
-			height: geometryDocument.height
+			width: defaultCanvas.width,
+			height: defaultCanvas.height
 		});
 
 		undoStack = [...undoStack, cloneProject(project)];
@@ -1826,6 +1890,7 @@
 		<div class="topbar-status">
 			<button type="button" onclick={downloadProjectSvgs}>Export SVG</button>
 			<button type="button" onclick={downloadProject}>Export Project</button>
+			<button type="button" onclick={openProjectSettings}>Settings</button>
 		</div>
 	</header>
 
@@ -2224,4 +2289,62 @@
 
 		</aside>
 	</main>
+
+	{#if settingsOpen}
+		<div class="modal-backdrop" role="presentation" onclick={closeProjectSettings}>
+			<div
+				aria-labelledby="project-settings-title"
+				aria-modal="true"
+				class="settings-modal"
+				role="dialog"
+				tabindex="-1"
+				onclick={(event) => event.stopPropagation()}
+				onkeydown={(event) => event.stopPropagation()}
+			>
+				<header class="modal-header">
+					<h2 id="project-settings-title">Project Settings</h2>
+					<button aria-label="Close settings" type="button" onclick={closeProjectSettings}>Close</button>
+				</header>
+
+				<label class="settings-field" for="project-prompt">
+					<span>Prompt</span>
+					<textarea
+						id="project-prompt"
+						placeholder="Draw a cohesive logo set in a minimal geometric style..."
+						value={project.projectPrompt ?? ''}
+						oninput={(event) => updateProjectPrompt(event.currentTarget.value)}
+					></textarea>
+				</label>
+
+				<div class="settings-grid" aria-label="Default canvas">
+					<h3>Default Canvas</h3>
+					<label for="default-canvas-width">Width</label>
+					<div class="number-field">
+						<input
+							id="default-canvas-width"
+							min="1"
+							step="1"
+							type="number"
+							value={projectDefaultCanvas().width}
+							onchange={(event) => updateDefaultCanvas('width', event)}
+						/>
+						<span>px</span>
+					</div>
+
+					<label for="default-canvas-height">Height</label>
+					<div class="number-field">
+						<input
+							id="default-canvas-height"
+							min="1"
+							step="1"
+							type="number"
+							value={projectDefaultCanvas().height}
+							onchange={(event) => updateDefaultCanvas('height', event)}
+						/>
+						<span>px</span>
+					</div>
+				</div>
+			</div>
+		</div>
+	{/if}
 </div>
