@@ -97,7 +97,6 @@
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
-	const svgOutput = $derived(exportToSvg(geometryDocument));
 	const selectedNode = $derived(
 		selectedNodeIds[0] ? findNode(geometryDocument, selectedNodeIds[0]) : undefined
 	);
@@ -1068,49 +1067,36 @@
 		return /^#[\da-f]{6}$/i.test(value ?? '') ? (value as string) : fallback;
 	}
 
-	function downloadSvg() {
-		const blob = new Blob([svgOutput], { type: 'image/svg+xml' });
+	function downloadProjectSvgs() {
+		for (const page of project.pages) {
+			const svg = exportToSvg(page.document);
+			const filename = `${fileSafeName(project.name || 'glyphsmith')}-${fileSafeName(page.name || page.id)}.svg`;
+			downloadTextFile(svg, filename, 'image/svg+xml');
+		}
+	}
+
+	function downloadTextFile(content: string, filename: string, type: string) {
+		const blob = new Blob([content], { type });
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 
 		link.href = url;
-		link.download = `${activePage.name || 'glyphsmith'}.svg`;
+		link.download = filename;
 		link.click();
 		URL.revokeObjectURL(url);
 	}
 
 	function downloadProject() {
 		const snapshot = cloneProject(project);
-		const blob = new Blob([JSON.stringify(snapshot, null, 2)], { type: 'application/json' });
-		const url = URL.createObjectURL(blob);
-		const link = document.createElement('a');
-
-		link.href = url;
-		link.download = `${project.name || 'glyphsmith'}.gs.json`;
-		link.click();
-		URL.revokeObjectURL(url);
+		downloadTextFile(
+			JSON.stringify(snapshot, null, 2),
+			`${fileSafeName(project.name || 'glyphsmith')}.gs.json`,
+			'application/json'
+		);
 	}
 
-	async function saveProjectToDisk() {
-		if (sendProjectToHost()) {
-			return;
-		}
-
-		saveStatus = 'saving';
-
-		try {
-			const response = await fetch('/api/project', {
-				method: 'POST',
-				headers: {
-					'Content-Type': 'application/json'
-				},
-				body: JSON.stringify(cloneProject(project))
-			});
-
-			saveStatus = response.ok ? 'saved' : 'error';
-		} catch {
-			saveStatus = 'error';
-		}
+	function fileSafeName(value: string) {
+		return value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'glyphsmith';
 	}
 
 	function connectHostWebSocket() {
@@ -1817,8 +1803,12 @@
 			<div class="brand-mark">G</div>
 			<div>
 				<h1>{project.name}</h1>
-				<p>{activePage.name}</p>
 			</div>
+		</div>
+
+		<div class="history-controls" aria-label="History">
+			<button type="button" onclick={undo} disabled={undoStack.length === 0}>Undo</button>
+			<button type="button" onclick={redo} disabled={redoStack.length === 0}>Redo</button>
 		</div>
 
 		<div class="toolbar" aria-label="Tools">
@@ -1834,9 +1824,8 @@
 		</div>
 
 		<div class="topbar-status">
-			<button type="button" onclick={undo} disabled={undoStack.length === 0}>Undo</button>
-			<button type="button" onclick={redo} disabled={redoStack.length === 0}>Redo</button>
-			<span class:connected={hostStatus === 'connected'} class="host-status">Host: {hostStatus}</span>
+			<button type="button" onclick={downloadProjectSvgs}>Export SVG</button>
+			<button type="button" onclick={downloadProject}>Export Project</button>
 		</div>
 	</header>
 
@@ -1953,20 +1942,22 @@
 				<h2>Zoom Settings</h2>
 				<div class="field-grid compact">
 					<label for="zoom-percent">Scale</label>
-					<div class="number-field">
-						<input
-							id="zoom-percent"
-							min="10"
-							max="800"
-							step="1"
-							type="number"
-							value={Math.round(viewport.zoom * 100)}
-							onchange={updateZoomPercent}
-						/>
-						<span>%</span>
+					<div class="zoom-row">
+						<div class="number-field">
+							<input
+								id="zoom-percent"
+								min="10"
+								max="800"
+								step="1"
+								type="number"
+								value={Math.round(viewport.zoom * 100)}
+								onchange={updateZoomPercent}
+							/>
+							<span>%</span>
+						</div>
+						<button class="secondary-button fit-button" type="button" onclick={fitCanvasToDocument}>Fit</button>
 					</div>
 				</div>
-				<button class="secondary-button" type="button" onclick={fitCanvasToDocument}>Fit</button>
 			</div>
 
 			<div class="panel">
@@ -2155,7 +2146,7 @@
 								onchange={(event) => updateSelectedGeometryNumber('y2', event.currentTarget.value)}
 							/>
 						{:else}
-							<div class="empty-row">Geometry editing is not available for this node.</div>
+							<div class="empty-row">N/A</div>
 						{/if}
 					</div>
 				{:else}
@@ -2231,21 +2222,6 @@
 				{/if}
 			</div>
 
-			<div class="panel export-panel">
-				<h2>Export</h2>
-				<button class="secondary-button" type="button" onclick={downloadSvg}>Download SVG</button>
-				<button class="secondary-button" type="button" onclick={saveProjectToDisk} disabled={saveStatus === 'saving'}>
-					{saveStatus === 'saving' ? 'Saving...' : 'Save Project'}
-				</button>
-				<button class="secondary-button" type="button" onclick={downloadProject}>Download Project</button>
-				{#if data.projectFile}
-					<div class="project-file-label">{data.projectFile}</div>
-				{/if}
-				{#if saveStatus === 'error'}
-					<div class="project-save-error">Project file is not writable from this session.</div>
-				{/if}
-				<textarea readonly value={svgOutput}></textarea>
-			</div>
 		</aside>
 	</main>
 </div>
