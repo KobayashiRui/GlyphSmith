@@ -27,6 +27,18 @@ export type NodeStyle = {
   opacity?: number;
 };
 
+export type DocumentBackground =
+  | {
+      type: "solid";
+      color: string;
+    }
+  | {
+      type: "checkerboard";
+      light?: string;
+      dark?: string;
+      size?: number;
+    };
+
 export type BaseNode = {
   id: NodeId;
   name?: string;
@@ -148,6 +160,7 @@ export type GeometryDocument = {
   name: string;
   width: number;
   height: number;
+  background?: DocumentBackground;
   root: GroupNode;
   comments: Comment[];
 };
@@ -195,7 +208,7 @@ export type MovePatch = {
 
 export type UpdateDocumentPatch = {
   op: "updateDocument";
-  changes: Partial<Pick<GeometryDocument, "name" | "width" | "height">>;
+  changes: Partial<Pick<GeometryDocument, "background" | "name" | "width" | "height">>;
 };
 
 export type PatchOperation =
@@ -210,6 +223,7 @@ export type Selection = {
 };
 
 export type CreateDocumentOptions = {
+  background?: DocumentBackground;
   id?: string;
   name?: string;
   width?: number;
@@ -235,6 +249,7 @@ export function createDocument(options: CreateDocumentOptions = {}): GeometryDoc
     name: options.name ?? "Untitled",
     width: options.width ?? 1024,
     height: options.height ?? 768,
+    background: options.background,
     root: {
       id: "root",
       type: "group",

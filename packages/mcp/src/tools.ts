@@ -462,7 +462,7 @@ function documentUpdateTool(context: ToolContext, args: Record<string, unknown>)
   return applyPatchOperations(context, args, [
     {
       op: "updateDocument",
-      changes: requiredRecord(args.changes, "changes") as Partial<Pick<GeometryDocument, "name" | "width" | "height">>
+      changes: requiredRecord(args.changes, "changes") as Partial<Pick<GeometryDocument, "background" | "name" | "width" | "height">>
     }
   ]);
 }

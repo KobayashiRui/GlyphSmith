@@ -1,5 +1,6 @@
 import type {
   Bounds,
+  DocumentBackground,
   GeometryDocument,
   GeometryNode,
   InsertPatch,
@@ -516,12 +517,48 @@ export function normalizeBounds(start: Point, end: Point): Bounds {
 
 function drawPage(context: CanvasRenderingContext2D, document: GeometryDocument): void {
   context.save();
-  context.fillStyle = "#ffffff";
+  drawDocumentBackground(context, document);
   context.strokeStyle = "#d1d5db";
   context.lineWidth = 1;
-  context.fillRect(0, 0, document.width, document.height);
   context.strokeRect(0, 0, document.width, document.height);
   context.restore();
+}
+
+function drawDocumentBackground(context: CanvasRenderingContext2D, document: GeometryDocument): void {
+  const background = document.background ?? { type: "solid", color: "#ffffff" };
+
+  if (background.type === "checkerboard") {
+    drawCheckerboardBackground(context, document, background);
+    return;
+  }
+
+  context.fillStyle = background.color;
+  context.fillRect(0, 0, document.width, document.height);
+}
+
+function drawCheckerboardBackground(
+  context: CanvasRenderingContext2D,
+  document: GeometryDocument,
+  background: Extract<DocumentBackground, { type: "checkerboard" }>
+): void {
+  const size = Math.max(1, background.size ?? 32);
+  const light = background.light ?? "#f8fafc";
+  const dark = background.dark ?? "#cfd8df";
+
+  context.fillStyle = light;
+  context.fillRect(0, 0, document.width, document.height);
+
+  context.fillStyle = dark;
+
+  for (let y = 0; y < document.height; y += size) {
+    for (let x = 0; x < document.width; x += size) {
+      if ((Math.floor(x / size) + Math.floor(y / size)) % 2 === 0) {
+        continue;
+      }
+
+      context.fillRect(x, y, Math.min(size, document.width - x), Math.min(size, document.height - y));
+    }
+  }
 }
 
 function drawNode(context: CanvasRenderingContext2D, node: GeometryNode): void {

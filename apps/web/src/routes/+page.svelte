@@ -2,6 +2,7 @@
 	import {
 		createPage,
 		createProject,
+		type DocumentBackground,
 		type GeometryDocument,
 		type GeometryNode,
 		type GlyphSmithProject,
@@ -74,6 +75,22 @@
 	let hostReconnectTimer: ReturnType<typeof setTimeout> | undefined;
 	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
+
+	const uiColors = {
+		primary: '#4f8ef7',
+		primaryHover: '#6ea4ff',
+		primaryPreviewFill: 'rgba(79, 142, 247, 0.08)',
+		warning: '#facc15',
+		workbench: '#383838'
+	} as const;
+
+	const pageBackgroundColorFallbacks = {
+		white: '#ffffff',
+		gray: '#a0a0a0',
+		black: '#000000',
+		alphaLight: '#f8fafc',
+		alphaDark: '#cfd8df'
+	} as const;
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
@@ -369,6 +386,79 @@
 		});
 	}
 
+	type BackgroundPreset = 'alpha' | 'black' | 'gray' | 'white';
+
+	function updateDocumentBackground(preset: BackgroundPreset) {
+		commitPatch({
+			op: 'updateDocument',
+			changes: {
+				background: backgroundFromPreset(preset)
+			}
+		});
+	}
+
+	function backgroundFromPreset(preset: BackgroundPreset): DocumentBackground {
+		if (preset === 'gray') {
+			return { type: 'solid', color: themeColor('page-gray', pageBackgroundColorFallbacks.gray) };
+		}
+
+		if (preset === 'black') {
+			return { type: 'solid', color: themeColor('page-black', pageBackgroundColorFallbacks.black) };
+		}
+
+		if (preset === 'alpha') {
+			return {
+				type: 'checkerboard',
+				light: themeColor('page-alpha-light', pageBackgroundColorFallbacks.alphaLight),
+				dark: themeColor('page-alpha-dark', pageBackgroundColorFallbacks.alphaDark),
+				size: 32
+			};
+		}
+
+		return { type: 'solid', color: themeColor('page-white', pageBackgroundColorFallbacks.white) };
+	}
+
+	function themeColor(name: string, fallback: string) {
+		if (typeof window === 'undefined') {
+			return fallback;
+		}
+
+		return getComputedStyle(document.documentElement).getPropertyValue(`--color-gs-${name}`).trim() || fallback;
+	}
+
+	function normalizeColor(color: string) {
+		return color.trim().toLowerCase();
+	}
+
+	function backgroundPreset(background: DocumentBackground | undefined): BackgroundPreset {
+		if (background?.type === 'checkerboard') {
+			return 'alpha';
+		}
+
+		if (background?.type === 'solid') {
+			const color = normalizeColor(background.color);
+			const black = normalizeColor(themeColor('page-black', pageBackgroundColorFallbacks.black));
+			const gray = normalizeColor(themeColor('page-gray', pageBackgroundColorFallbacks.gray));
+
+			if (color === black || color === '#000000' || color === 'black') {
+				return 'black';
+			}
+
+			if (
+				color === gray ||
+				color === '#6b7280' ||
+				color === '#808080' ||
+				color === '#a0a0a0' ||
+				color === 'gray' ||
+				color === 'grey'
+			) {
+				return 'gray';
+			}
+		}
+
+		return 'white';
+	}
+
 	function updateZoomPercent(event: Event) {
 		const input = event.currentTarget as HTMLInputElement;
 		const value = Number(input.value);
@@ -658,7 +748,7 @@
 	) {
 		const style: NodeStyle = {
 			fill: 'none',
-			stroke: '#3b82f6',
+			stroke: uiColors.primary,
 			strokeWidth: 2
 		};
 
@@ -1154,7 +1244,7 @@
 
 		renderDocument(context, geometryDocument, viewport, {
 			selectedNodeIds,
-			background: '#101113',
+			background: uiColors.workbench,
 			pixelRatio: canvasPixelRatio,
 			showEditHandles: selectedNodeIds.length > 0
 		});
@@ -1197,7 +1287,7 @@
 			viewport.x * canvasPixelRatio,
 			viewport.y * canvasPixelRatio
 		);
-		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.strokeStyle = uiColors.primary;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
 
@@ -1250,7 +1340,7 @@
 			viewport.x * canvasPixelRatio,
 			viewport.y * canvasPixelRatio
 		);
-		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.strokeStyle = uiColors.primary;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
 		drawPathGeometry(canvasContext, candidate.start, candidate.segments);
@@ -1281,7 +1371,7 @@
 			viewport.x * canvasPixelRatio,
 			viewport.y * canvasPixelRatio
 		);
-		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.strokeStyle = uiColors.primary;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
 		drawPathGeometry(canvasContext, start, [segment]);
@@ -1305,8 +1395,8 @@
 			viewport.y * canvasPixelRatio
 		);
 		canvasContext.globalAlpha = 0.38;
-		canvasContext.strokeStyle = '#60a5fa';
-		canvasContext.fillStyle = 'rgba(96, 165, 250, 0.08)';
+		canvasContext.strokeStyle = uiColors.primaryHover;
+		canvasContext.fillStyle = uiColors.primaryPreviewFill;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.setLineDash([5 / viewport.zoom, 4 / viewport.zoom]);
 
@@ -1387,7 +1477,7 @@
 			viewport.x * canvasPixelRatio,
 			viewport.y * canvasPixelRatio
 		);
-		canvasContext.strokeStyle = '#2563eb';
+		canvasContext.strokeStyle = uiColors.primary;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.setLineDash([6 / viewport.zoom, 4 / viewport.zoom]);
 
@@ -1441,7 +1531,7 @@
 		}
 
 		canvasContext.setLineDash([]);
-		canvasContext.fillStyle = '#60a5fa';
+		canvasContext.fillStyle = uiColors.primaryHover;
 		drawDraftHandle(canvasContext, draftStart);
 		drawDraftHandle(canvasContext, draftEnd);
 
@@ -1462,7 +1552,7 @@
 			viewport.x * canvasPixelRatio,
 			viewport.y * canvasPixelRatio
 		);
-		canvasContext.strokeStyle = '#facc15';
+		canvasContext.strokeStyle = uiColors.warning;
 		canvasContext.lineWidth = 2 / viewport.zoom;
 		canvasContext.beginPath();
 		canvasContext.arc(snapTarget.point.x, snapTarget.point.y, 7 / viewport.zoom, 0, Math.PI * 2);
@@ -1667,6 +1757,21 @@
 			</div>
 
 			<div class="panel">
+				<h2>Page Background</h2>
+				<div class="background-options" aria-label="Page background">
+					{#each ['white', 'gray', 'black', 'alpha'] as preset}
+						<button
+							aria-label={`${preset} background`}
+							class:active={backgroundPreset(geometryDocument.background) === preset}
+							class="background-swatch {preset}"
+							type="button"
+							onclick={() => updateDocumentBackground(preset as BackgroundPreset)}
+						></button>
+					{/each}
+				</div>
+			</div>
+
+			<div class="panel">
 				<h2>Zoom Settings</h2>
 				<div class="field-grid compact">
 					<label for="zoom-percent">Scale</label>
@@ -1696,7 +1801,7 @@
 								aria-label="Fill color"
 								class="color-field"
 								type="color"
-								value={colorPickerValue(selectedNode.style?.fill, '#3b82f6')}
+								value={colorPickerValue(selectedNode.style?.fill, uiColors.primary)}
 								oninput={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
 							/>
 							<input
