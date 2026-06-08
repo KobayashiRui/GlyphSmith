@@ -606,6 +606,14 @@
 		});
 	}
 
+	function fitCanvasToActivePageAfterUpdate() {
+		void tick().then(() => {
+			if (canvas) {
+				fitCanvasToDocument();
+			}
+		});
+	}
+
 	function canvasCenterPoint(): Point {
 		const rect = canvas.getBoundingClientRect();
 
@@ -973,6 +981,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		fitCanvasToActivePageAfterUpdate();
 		markProjectChanged();
 		closePageContextMenu();
 	}
@@ -997,6 +1006,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		fitCanvasToActivePageAfterUpdate();
 		markProjectChanged();
 	}
 
@@ -1025,6 +1035,7 @@
 		};
 		selectedNodeIds = [];
 		finishPathDrawing();
+		fitCanvasToActivePageAfterUpdate();
 		markProjectChanged();
 		closePageContextMenu();
 	}
@@ -1062,6 +1073,7 @@
 		if (deletingActivePage) {
 			selectedNodeIds = [];
 			finishPathDrawing();
+			fitCanvasToActivePageAfterUpdate();
 		}
 
 		markProjectChanged();
