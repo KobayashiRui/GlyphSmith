@@ -3,13 +3,7 @@
 	import { fitViewportToDocument, renderDocument } from '@glyphsmith/editor';
 	import { onMount } from 'svelte';
 
-	let {
-		document,
-		index
-	}: {
-		document: GeometryDocument;
-		index: number;
-	} = $props();
+	let { document }: { document: GeometryDocument } = $props();
 
 	let canvas: HTMLCanvasElement;
 	let resizeObserver: ResizeObserver | undefined;
@@ -55,7 +49,7 @@
 		const viewport = fitViewportToDocument(document, { width: rect.width, height: rect.height }, 8);
 
 		renderDocument(context, document, viewport, {
-			background: '#101113',
+			background: 'rgba(0, 0, 0, 0)',
 			pixelRatio,
 			showEditHandles: false
 		});
@@ -64,5 +58,4 @@
 
 <span class="page-thumb">
 	<canvas class="page-thumb-canvas" bind:this={canvas} aria-hidden="true"></canvas>
-	<span class="page-thumb-index">{index}</span>
 </span>

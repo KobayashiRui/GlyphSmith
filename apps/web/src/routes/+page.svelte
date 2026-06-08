@@ -46,7 +46,7 @@
 	import { isSortable } from '@dnd-kit/svelte/sortable';
 	import PageThumbnail from '$lib/PageThumbnail.svelte';
 	import LayerRow from './LayerRow.svelte';
-	import { onMount } from 'svelte';
+	import { onMount, tick } from 'svelte';
 	import type { PageData } from './$types';
 
 	let { data }: { data: PageData } = $props();
@@ -84,6 +84,10 @@
 	let hasFitInitialViewport = false;
 	let settingsOpen = $state(false);
 	let layerDragStartProject: GlyphSmithProject | undefined;
+	let pageContextMenu = $state<{ pageId: string; x: number; y: number } | undefined>();
+	let renamingPageId = $state<string | undefined>();
+	let renamingPageName = $state('');
+	let pageRenameInput = $state<HTMLInputElement | undefined>();
 
 	type DragStartEvent = Parameters<NonNullable<DragDropEventHandlers['onDragStart']>>[0];
 	type DragOverEvent = Parameters<NonNullable<DragDropEventHandlers['onDragOver']>>[0];
@@ -108,6 +112,9 @@
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
 	const layerNodes = $derived([...geometryDocument.root.children].reverse());
+	const pageContextMenuPage = $derived(
+		pageContextMenu ? project.pages.find((page) => page.id === pageContextMenu?.pageId) : undefined
+	);
 	const selectedNode = $derived(
 		selectedNodeIds[0] ? findNode(geometryDocument, selectedNodeIds[0]) : undefined
 	);
@@ -166,6 +173,12 @@
 		};
 
 		const handleKeyDown = (event: KeyboardEvent) => {
+			if (pageContextMenu && event.key === 'Escape') {
+				event.preventDefault();
+				closePageContextMenu();
+				return;
+			}
+
 			if (settingsOpen && event.key === 'Escape') {
 				event.preventDefault();
 				closeProjectSettings();
@@ -212,16 +225,22 @@
 			}
 		};
 
+		const handleWindowClick = () => {
+			closePageContextMenu();
+		};
+
 		resize();
 		window.addEventListener('resize', resize);
 		window.addEventListener('keydown', handleKeyDown);
 		window.addEventListener('keyup', handleKeyUp);
+		window.addEventListener('click', handleWindowClick);
 
 		return () => {
 			closeHostWebSocket();
 			window.removeEventListener('resize', resize);
 			window.removeEventListener('keydown', handleKeyDown);
 			window.removeEventListener('keyup', handleKeyUp);
+			window.removeEventListener('click', handleWindowClick);
 		};
 	});
 
@@ -403,6 +422,39 @@
 				[field]: value
 			}
 		});
+	}
+
+	function updatePageName(pageId: string, value: string) {
+		const name = value.trim();
+		const page = project.pages.find((candidate) => candidate.id === pageId);
+
+		if (!page || !name || page.name === name) {
+			return;
+		}
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			pages: project.pages.map((candidate) =>
+				candidate.id === pageId
+					? {
+							...candidate,
+							name,
+							document: {
+								...candidate.document,
+								name
+							}
+						}
+					: candidate
+			),
+			updatedAt: new Date().toISOString()
+		};
+		markProjectChanged();
+	}
+
+	function updateActivePageName(event: Event) {
+		updatePageName(project.activePageId, (event.currentTarget as HTMLInputElement).value);
 	}
 
 	type BackgroundPreset = 'alpha' | 'black' | 'gray' | 'white';
@@ -921,6 +973,7 @@
 		selectedNodeIds = [];
 		finishPathDrawing();
 		markProjectChanged();
+		closePageContextMenu();
 	}
 
 	function addPage() {
@@ -946,22 +999,23 @@
 		markProjectChanged();
 	}
 
-	function duplicatePage() {
-		const pageId = nextPageId();
-		const document = cloneDocument(geometryDocument);
+	function duplicatePage(pageId = project.activePageId) {
+		const sourcePage = project.pages.find((page) => page.id === pageId) ?? activePage;
+		const duplicatePageId = nextPageId();
+		const document = cloneDocument(sourcePage.document);
 
-		document.id = `${pageId}-document`;
-		document.name = `${activePage.name} Copy`;
+		document.id = `${duplicatePageId}-document`;
+		document.name = `${sourcePage.name} Copy`;
 
 		undoStack = [...undoStack, cloneProject(project)];
 		redoStack = [];
 		project = {
 			...project,
-			activePageId: pageId,
+			activePageId: duplicatePageId,
 			pages: [
 				...project.pages,
 				{
-					id: pageId,
+					id: duplicatePageId,
 					name: document.name,
 					document
 				}
@@ -971,18 +1025,27 @@
 		selectedNodeIds = [];
 		finishPathDrawing();
 		markProjectChanged();
+		closePageContextMenu();
 	}
 
-	function deleteActivePage() {
+	function deletePage(pageId = project.activePageId) {
 		if (project.pages.length <= 1) {
 			return;
 		}
 
-		const activeIndex = project.pages.findIndex((page) => page.id === project.activePageId);
-		const pages = project.pages.filter((page) => page.id !== project.activePageId);
-		const nextActivePage = pages[Math.max(0, activeIndex - 1)] ?? pages[0];
+		const pageIndex = project.pages.findIndex((page) => page.id === pageId);
 
-		if (!nextActivePage) {
+		if (pageIndex < 0) {
+			return;
+		}
+
+		const pages = project.pages.filter((page) => page.id !== pageId);
+		const fallbackPage = pages[Math.max(0, pageIndex - 1)] ?? pages[0];
+		const deletingActivePage = pageId === project.activePageId;
+		const nextActivePageId =
+			deletingActivePage ? fallbackPage?.id : project.activePageId;
+
+		if (!nextActivePageId) {
 			return;
 		}
 
@@ -990,13 +1053,81 @@
 		redoStack = [];
 		project = {
 			...project,
-			activePageId: nextActivePage.id,
+			activePageId: nextActivePageId,
 			pages,
 			updatedAt: new Date().toISOString()
 		};
-		selectedNodeIds = [];
-		finishPathDrawing();
+
+		if (deletingActivePage) {
+			selectedNodeIds = [];
+			finishPathDrawing();
+		}
+
 		markProjectChanged();
+		closePageContextMenu();
+	}
+
+	function openPageContextMenu(event: MouseEvent, pageId: string) {
+		event.preventDefault();
+		event.stopPropagation();
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const page = project.pages.find((candidate) => candidate.id === pageId);
+		pageContextMenu = {
+			pageId,
+			x: rect.left + rect.width / 2,
+			y: rect.top
+		};
+		renamingPageId = undefined;
+		renamingPageName = page?.name ?? '';
+	}
+
+	function closePageContextMenu() {
+		pageContextMenu = undefined;
+		renamingPageId = undefined;
+		renamingPageName = '';
+	}
+
+	function startPageContextRename() {
+		if (!pageContextMenuPage) {
+			return;
+		}
+
+		renamingPageId = pageContextMenuPage.id;
+		renamingPageName = pageContextMenuPage.name;
+		void tick().then(() => {
+			pageRenameInput?.focus();
+			pageRenameInput?.select();
+		});
+	}
+
+	function confirmPageContextRename() {
+		if (!renamingPageId) {
+			return;
+		}
+
+		updatePageName(renamingPageId, renamingPageName);
+		renamingPageId = undefined;
+		renamingPageName = '';
+	}
+
+	function cancelPageContextRename() {
+		renamingPageId = undefined;
+		renamingPageName = '';
+	}
+
+	function handlePageRenameKeyDown(event: KeyboardEvent) {
+		event.stopPropagation();
+
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			confirmPageContextRename();
+			return;
+		}
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelPageContextRename();
+		}
 	}
 
 	function handleLayerSortStart(event: DragStartEvent) {
@@ -2015,30 +2146,80 @@
 				<div class="page-strip-list">
 					{#each project.pages as page, pageIndex}
 						<button
+							aria-label={`${page.name}, ${page.document.width} x ${page.document.height}px`}
 							class:active={page.id === project.activePageId}
+							title={`${page.name} · ${page.document.width} x ${page.document.height}px`}
 							type="button"
 							onclick={() => setActivePage(page.id)}
+							oncontextmenu={(event) => openPageContextMenu(event, page.id)}
 						>
-							<PageThumbnail document={page.document} index={pageIndex + 1} />
-							<span class="page-meta">
-								<strong>{page.name}</strong>
-								<small>{page.document.width} x {page.document.height}px</small>
-							</span>
+							<PageThumbnail document={page.document} />
+							<span class="page-name">{page.name || `Page ${pageIndex + 1}`}</span>
 						</button>
 					{/each}
-				</div>
-				<div class="page-strip-actions">
-					<button type="button" onclick={addPage}>New</button>
-					<button type="button" onclick={duplicatePage}>Duplicate</button>
-					<button type="button" onclick={deleteActivePage} disabled={project.pages.length <= 1}>Delete</button>
+					<button class="page-add-button" type="button" aria-label="New page" title="New page" onclick={addPage}>
+						<span>+</span>
+					</button>
 				</div>
 			</footer>
+
+			{#if pageContextMenu && pageContextMenuPage}
+				<div
+					class="page-context-menu"
+					style={`left: ${pageContextMenu.x}px; top: ${pageContextMenu.y}px;`}
+					role="menu"
+					tabindex="-1"
+					onclick={(event) => event.stopPropagation()}
+					oncontextmenu={(event) => event.preventDefault()}
+					onkeydown={(event) => event.stopPropagation()}
+				>
+					<div class="page-context-title">
+						{#if renamingPageId === pageContextMenuPage.id}
+							<input
+								bind:this={pageRenameInput}
+								class="page-context-name-input"
+								type="text"
+								value={renamingPageName}
+								oninput={(event) => (renamingPageName = (event.currentTarget as HTMLInputElement).value)}
+								onblur={confirmPageContextRename}
+								onkeydown={handlePageRenameKeyDown}
+							/>
+						{:else}
+							<button class="page-context-name-button" type="button" onclick={startPageContextRename}>
+								{pageContextMenuPage.name}
+							</button>
+						{/if}
+						<span>{pageContextMenuPage.document.width} x {pageContextMenuPage.document.height}px</span>
+					</div>
+					<button type="button" role="menuitem" onclick={() => duplicatePage(pageContextMenuPage.id)}>
+						Duplicate
+					</button>
+					<button
+						class="danger"
+						type="button"
+						role="menuitem"
+						disabled={project.pages.length <= 1}
+						onclick={() => deletePage(pageContextMenuPage.id)}
+					>
+						Delete
+					</button>
+				</div>
+			{/if}
 		</div>
 
 		<aside class="inspector">
 			<div class="panel">
-				<h2>Size Settings</h2>
+				<h2>Page Settings</h2>
 				<div class="field-grid">
+					<label for="document-name">Name</label>
+					<input
+						id="document-name"
+						class="text-field"
+						type="text"
+						value={activePage.name}
+						onchange={updateActivePageName}
+					/>
+
 					<label for="document-width">Width</label>
 					<div class="number-field">
 						<input
