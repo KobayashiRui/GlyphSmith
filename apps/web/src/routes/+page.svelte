@@ -1654,10 +1654,6 @@
 		<div class="topbar-status">
 			<button type="button" onclick={undo} disabled={undoStack.length === 0}>Undo</button>
 			<button type="button" onclick={redo} disabled={redoStack.length === 0}>Redo</button>
-			<span>{tool}</span>
-			<span>{geometryDocument.root.children.length} nodes</span>
-			<span>{Math.round(viewport.zoom * 100)}%</span>
-			<span>{geometryDocument.width} x {geometryDocument.height}px</span>
 			<span class:connected={hostStatus === 'connected'} class="host-status">Host: {hostStatus}</span>
 		</div>
 	</header>
