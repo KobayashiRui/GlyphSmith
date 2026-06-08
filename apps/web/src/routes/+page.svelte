@@ -725,7 +725,7 @@
 			shapeTool === 'rect'
 				? { width: 96, height: 64 }
 				: shapeTool === 'ellipse'
-					? { width: 80, height: 80 }
+					? { width: 112, height: 72 }
 					: { width: 88, height: 76 };
 
 		return {
@@ -958,6 +958,107 @@
 				}
 			} as Partial<GeometryNode>
 		});
+	}
+
+	type GeometryNumberField = 'cx' | 'cy' | 'height' | 'r' | 'rx' | 'ry' | 'width' | 'x' | 'x1' | 'x2' | 'y' | 'y1' | 'y2';
+
+	function updateSelectedGeometryNumber(field: GeometryNumberField, rawValue: string) {
+		if (!selectedNode) {
+			return;
+		}
+
+		if (selectedNode.type === 'rect' && (field === 'rx' || field === 'ry') && rawValue.trim() === '') {
+			commitPatch({
+				op: 'update',
+				target: selectedNode.id,
+				changes: {
+					[field]: undefined
+				} as Partial<GeometryNode>
+			});
+			return;
+		}
+
+		const value = Number(rawValue);
+
+		if (!Number.isFinite(value)) {
+			return;
+		}
+
+		const changes = geometryNumberChanges(selectedNode, field, value);
+
+		if (!changes) {
+			return;
+		}
+
+		commitPatch({
+			op: 'update',
+			target: selectedNode.id,
+			changes
+		});
+	}
+
+	function geometryNumberChanges(
+		node: GeometryNode,
+		field: GeometryNumberField,
+		value: number
+	): Partial<GeometryNode> | undefined {
+		if (node.type === 'rect') {
+			if (field === 'x' || field === 'y') {
+				return { [field]: value } as Partial<GeometryNode>;
+			}
+
+			if (field === 'width') {
+				const width = Math.max(1, value);
+				return {
+					width,
+					rx: node.rx === undefined ? undefined : Math.min(node.rx, width / 2)
+				} as Partial<GeometryNode>;
+			}
+
+			if (field === 'height') {
+				const height = Math.max(1, value);
+				return {
+					height,
+					ry: node.ry === undefined ? undefined : Math.min(node.ry, height / 2)
+				} as Partial<GeometryNode>;
+			}
+
+			if (field === 'rx') {
+				return { rx: Math.min(Math.max(value, 0), node.width / 2) } as Partial<GeometryNode>;
+			}
+
+			if (field === 'ry') {
+				return { ry: Math.min(Math.max(value, 0), node.height / 2) } as Partial<GeometryNode>;
+			}
+		}
+
+		if (node.type === 'ellipse') {
+			if (field === 'cx' || field === 'cy') {
+				return { [field]: value } as Partial<GeometryNode>;
+			}
+
+			if (field === 'rx' || field === 'ry') {
+				return { [field]: Math.max(0.5, value) } as Partial<GeometryNode>;
+			}
+		}
+
+		if (node.type === 'circle') {
+			if (field === 'cx' || field === 'cy') {
+				return { [field]: value } as Partial<GeometryNode>;
+			}
+
+			if (field === 'r') {
+				return { r: Math.max(0.5, value) } as Partial<GeometryNode>;
+			}
+		}
+
+		if (node.type === 'line') {
+			if (field === 'x1' || field === 'y1' || field === 'x2' || field === 'y2') {
+				return { [field]: value } as Partial<GeometryNode>;
+			}
+		}
+
+		return undefined;
 	}
 
 	function colorPickerValue(value: string | undefined, fallback: string): string {
@@ -1785,6 +1886,200 @@
 					</div>
 				</div>
 				<button class="secondary-button" type="button" onclick={fitCanvasToDocument}>Fit</button>
+			</div>
+
+			<div class="panel">
+				<h2>Geometry</h2>
+				{#if selectedNode}
+					<div class="field-grid">
+						{#if selectedNode.type === 'rect'}
+							<label for="rect-x">X</label>
+							<input
+								id="rect-x"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.x}
+								onchange={(event) => updateSelectedGeometryNumber('x', event.currentTarget.value)}
+							/>
+
+							<label for="rect-y">Y</label>
+							<input
+								id="rect-y"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.y}
+								onchange={(event) => updateSelectedGeometryNumber('y', event.currentTarget.value)}
+							/>
+
+							<label for="rect-width">Width</label>
+							<input
+								id="rect-width"
+								class="text-field"
+								min="1"
+								step="1"
+								type="number"
+								value={selectedNode.width}
+								onchange={(event) => updateSelectedGeometryNumber('width', event.currentTarget.value)}
+							/>
+
+							<label for="rect-height">Height</label>
+							<input
+								id="rect-height"
+								class="text-field"
+								min="1"
+								step="1"
+								type="number"
+								value={selectedNode.height}
+								onchange={(event) => updateSelectedGeometryNumber('height', event.currentTarget.value)}
+							/>
+
+							<label for="rect-rx">Corner X</label>
+							<input
+								id="rect-rx"
+								class="text-field"
+								min="0"
+								max={selectedNode.width / 2}
+								placeholder={String(selectedNode.ry ?? 0)}
+								step="1"
+								type="number"
+								value={selectedNode.rx ?? ''}
+								onchange={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
+							/>
+
+							<label for="rect-ry">Corner Y</label>
+							<input
+								id="rect-ry"
+								class="text-field"
+								min="0"
+								max={selectedNode.height / 2}
+								placeholder={String(selectedNode.rx ?? 0)}
+								step="1"
+								type="number"
+								value={selectedNode.ry ?? ''}
+								onchange={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
+							/>
+						{:else if selectedNode.type === 'ellipse'}
+							<label for="ellipse-cx">Center X</label>
+							<input
+								id="ellipse-cx"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.cx}
+								onchange={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
+							/>
+
+							<label for="ellipse-cy">Center Y</label>
+							<input
+								id="ellipse-cy"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.cy}
+								onchange={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
+							/>
+
+							<label for="ellipse-rx">Radius X</label>
+							<input
+								id="ellipse-rx"
+								class="text-field"
+								min="0.5"
+								step="1"
+								type="number"
+								value={selectedNode.rx}
+								onchange={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
+							/>
+
+							<label for="ellipse-ry">Radius Y</label>
+							<input
+								id="ellipse-ry"
+								class="text-field"
+								min="0.5"
+								step="1"
+								type="number"
+								value={selectedNode.ry}
+								onchange={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
+							/>
+						{:else if selectedNode.type === 'circle'}
+							<label for="circle-cx">Center X</label>
+							<input
+								id="circle-cx"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.cx}
+								onchange={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
+							/>
+
+							<label for="circle-cy">Center Y</label>
+							<input
+								id="circle-cy"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.cy}
+								onchange={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
+							/>
+
+							<label for="circle-r">Radius</label>
+							<input
+								id="circle-r"
+								class="text-field"
+								min="0.5"
+								step="1"
+								type="number"
+								value={selectedNode.r}
+								onchange={(event) => updateSelectedGeometryNumber('r', event.currentTarget.value)}
+							/>
+						{:else if selectedNode.type === 'line'}
+							<label for="line-x1">X1</label>
+							<input
+								id="line-x1"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.x1}
+								onchange={(event) => updateSelectedGeometryNumber('x1', event.currentTarget.value)}
+							/>
+
+							<label for="line-y1">Y1</label>
+							<input
+								id="line-y1"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.y1}
+								onchange={(event) => updateSelectedGeometryNumber('y1', event.currentTarget.value)}
+							/>
+
+							<label for="line-x2">X2</label>
+							<input
+								id="line-x2"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.x2}
+								onchange={(event) => updateSelectedGeometryNumber('x2', event.currentTarget.value)}
+							/>
+
+							<label for="line-y2">Y2</label>
+							<input
+								id="line-y2"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.y2}
+								onchange={(event) => updateSelectedGeometryNumber('y2', event.currentTarget.value)}
+							/>
+						{:else}
+							<div class="empty-row">Geometry editing is not available for this node.</div>
+						{/if}
+					</div>
+				{:else}
+					<div class="empty-row">No selection</div>
+				{/if}
 			</div>
 
 			<div class="panel">

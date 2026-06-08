@@ -610,10 +610,13 @@ function drawNode(context: CanvasRenderingContext2D, node: GeometryNode): void {
 function drawRect(context: CanvasRenderingContext2D, node: RectNode): void {
   context.beginPath();
 
-  if ((node.rx ?? 0) > 0 || (node.ry ?? 0) > 0) {
+  const rx = node.rx ?? node.ry ?? 0;
+  const ry = node.ry ?? node.rx ?? 0;
+
+  if (rx > 0 || ry > 0) {
     context.roundRect(node.x, node.y, node.width, node.height, [
-      node.rx ?? 0,
-      node.ry ?? node.rx ?? 0
+      rx,
+      ry
     ]);
   } else {
     context.rect(node.x, node.y, node.width, node.height);
