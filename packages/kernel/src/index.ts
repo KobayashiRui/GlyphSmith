@@ -409,6 +409,8 @@ function moveNode(node: GeometryNode, patch: MovePatch): GeometryNode {
           }
         })
       };
+    case "text":
+      return { ...node, x: node.x + delta.x, y: node.y + delta.y };
   }
 }
 

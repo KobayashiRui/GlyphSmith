@@ -236,6 +236,31 @@ function parseSvgElement(element: Element, context: SvgImportContext, inheritedS
         segments: subpath.segments
       }));
     }
+    case "text": {
+      const text = parseTextElementContent(element);
+
+      if (!text.trim()) {
+        return [];
+      }
+
+      return [{
+        ...common,
+        type: "text",
+        x: parseLength(element.getAttribute("x")) ?? 0,
+        y: parseLength(element.getAttribute("y")) ?? 0,
+        text,
+        fill: style.fill,
+        opacity: style.opacity,
+        stroke: style.stroke,
+        strokeWidth: style.strokeWidth,
+        fontFamily: styleValue(element, "font-family"),
+        fontSize: parseLength(styleValue(element, "font-size") ?? null),
+        fontStyle: textFontStyle(styleValue(element, "font-style")),
+        fontWeight: styleValue(element, "font-weight"),
+        textAnchor: textAnchorValue(styleValue(element, "text-anchor")),
+        dominantBaseline: styleValue(element, "dominant-baseline")
+      }];
+    }
     default:
       return [];
   }
@@ -324,6 +349,18 @@ function parseInlineStyle(style: string | null): Map<string, string> {
   }
 
   return entries;
+}
+
+function styleValue(element: Element, name: string): string | undefined {
+  return parseInlineStyle(element.getAttribute("style")).get(name) ?? element.getAttribute(name) ?? undefined;
+}
+
+function textFontStyle(value: string | undefined): "normal" | "italic" | undefined {
+  return value === "italic" ? "italic" : value === "normal" ? "normal" : undefined;
+}
+
+function textAnchorValue(value: string | undefined): "start" | "middle" | "end" | undefined {
+  return value === "start" || value === "middle" || value === "end" ? value : undefined;
 }
 
 function parsePathData(data: string): PathSubpath[] {
@@ -557,6 +594,18 @@ function reflectPoint(point: Point, origin: Point): Point {
   };
 }
 
+function parseTextElementContent(element: Element): string {
+  const tspans = Array.from(element.children).filter(
+    (child) => child.localName.toLowerCase() === "tspan"
+  );
+
+  if (tspans.length > 0) {
+    return tspans.map((tspan) => tspan.textContent ?? "").join("\n");
+  }
+
+  return element.textContent ?? "";
+}
+
 function parsePoints(value: string | null): Point[] {
   if (!value) {
     return [];
@@ -629,7 +678,46 @@ function renderNode(node: GeometryNode): string {
       return `<polyline${common} points="${renderPoints(node.points)}" />`;
     case "path":
       return `<path${common} d="${renderPathData(node.start, node.segments, node.closed)}" />`;
+    case "text":
+      return renderTextNode(node);
   }
+}
+
+function renderTextNode(node: Extract<GeometryNode, { type: "text" }>): string {
+  const lines = textLines(node.text);
+  const common = `${renderId(node.id)}${renderName(node.name)}${renderTextStyle(node)} x="${formatNumber(node.x)}" y="${formatNumber(node.y)}"`;
+
+  if (lines.length === 1) {
+    return `<text${common}>${escapeText(node.text)}</text>`;
+  }
+
+  const tspans = lines.map((line, index) => {
+    const dy = index === 0 ? "" : ` dy="1.2em"`;
+
+    return `<tspan x="${formatNumber(node.x)}"${dy}>${escapeText(line)}</tspan>`;
+  });
+
+  return `<text${common}>${tspans.join("")}</text>`;
+}
+
+function renderTextStyle(node: Extract<GeometryNode, { type: "text" }>): string {
+  const fill = node.style?.fill ?? node.fill ?? "#111827";
+  const stroke = node.style?.stroke ?? node.stroke;
+  const strokeWidth = node.style?.strokeWidth ?? node.strokeWidth;
+  const opacity = node.style?.opacity ?? node.opacity;
+
+  return [
+    ` fill="${escapeAttribute(fill)}"`,
+    stroke === undefined ? "" : ` stroke="${escapeAttribute(stroke)}"`,
+    strokeWidth === undefined ? "" : ` stroke-width="${formatNumber(strokeWidth)}"`,
+    node.fontFamily === undefined ? "" : ` font-family="${escapeAttribute(node.fontFamily)}"`,
+    node.fontSize === undefined ? "" : ` font-size="${formatNumber(node.fontSize)}"`,
+    node.fontWeight === undefined ? "" : ` font-weight="${escapeAttribute(String(node.fontWeight))}"`,
+    node.fontStyle === undefined ? "" : ` font-style="${escapeAttribute(node.fontStyle)}"`,
+    node.textAnchor === undefined ? "" : ` text-anchor="${escapeAttribute(node.textAnchor)}"`,
+    node.dominantBaseline === undefined ? "" : ` dominant-baseline="${escapeAttribute(node.dominantBaseline)}"`,
+    opacity === undefined ? "" : ` opacity="${formatNumber(opacity)}"`
+  ].join("");
 }
 
 function renderPathData(start: Point, segments: Segment[], closed: boolean): string {
@@ -715,4 +803,15 @@ function escapeAttribute(value: string): string {
     .replaceAll('"', "&quot;")
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;");
+}
+
+function escapeText(value: string): string {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function textLines(value: string): string[] {
+  return value.replace(/\r\n?/g, "\n").split("\n");
 }

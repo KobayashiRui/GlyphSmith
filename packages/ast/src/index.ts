@@ -30,6 +30,18 @@ export type NodeStyle = {
   opacity?: number;
 };
 
+export type TextStyle = Pick<
+  NodeStyle,
+  "fill" | "opacity" | "stroke" | "strokeWidth"
+> & {
+  fontFamily?: string;
+  fontSize?: number;
+  fontStyle?: "normal" | "italic";
+  fontWeight?: number | string;
+  textAnchor?: "start" | "middle" | "end";
+  dominantBaseline?: string;
+};
+
 export type DocumentBackground =
   | {
       type: "solid";
@@ -141,6 +153,23 @@ export type PathNode = BaseNode & {
   spline?: PathSpline;
 };
 
+export type TextRun = {
+  text: string;
+  dx?: number;
+  dy?: number;
+  x?: number;
+  y?: number;
+  style?: Partial<TextStyle>;
+};
+
+export type TextNode = BaseNode & TextStyle & {
+  type: "text";
+  x: number;
+  y: number;
+  text: string;
+  runs?: TextRun[];
+};
+
 export type GeometryNode =
   | GroupNode
   | RectNode
@@ -149,7 +178,8 @@ export type GeometryNode =
   | LineNode
   | PolygonNode
   | PolylineNode
-  | PathNode;
+  | PathNode
+  | TextNode;
 
 export type Comment = {
   id: string;

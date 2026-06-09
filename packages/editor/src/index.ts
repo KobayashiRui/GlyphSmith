@@ -13,10 +13,11 @@ import type {
   PolygonNode,
   RectNode,
   Segment,
+  TextNode,
   UpdatePatch
 } from "@glyphsmith/ast";
 
-export type Tool = "select" | "rect" | "ellipse" | "triangle" | "path";
+export type Tool = "select" | "rect" | "ellipse" | "triangle" | "path" | "text";
 export type PathSegmentMode = "line" | "quadratic" | "cubic" | "arc" | "catmullRom" | "basis";
 
 export type Viewport = {
@@ -198,6 +199,7 @@ export function renderDocument(
 
   if (options.showEditHandles) {
     drawPathControlGuides(context, document, options.selectedNodeIds ?? [], viewport, pixelRatio);
+    drawTextAnchorGuides(context, document, options.selectedNodeIds ?? [], viewport, pixelRatio);
     drawEditHandles(context, getEditHandles(document, options.selectedNodeIds ?? []), viewport, pixelRatio);
   }
 }
@@ -623,9 +625,96 @@ function drawNode(context: CanvasRenderingContext2D, node: GeometryNode): void {
       drawPath(context, node);
       paintCurrentPath(context, node.style);
       break;
+    case "text":
+      drawText(context, node);
+      break;
   }
 
   context.restore();
+}
+
+function drawText(context: CanvasRenderingContext2D, node: TextNode): void {
+  const fontSize = node.fontSize ?? 16;
+  const fontFamily = node.fontFamily ?? "Inter, system-ui, sans-serif";
+  const fontStyle = node.fontStyle ?? "normal";
+  const fontWeight = node.fontWeight ?? "400";
+  const lines = textLines(node.text);
+  const lineHeight = textLineHeight(fontSize);
+  const startY = textStartY(node, fontSize, lineHeight, lines.length);
+
+  context.globalAlpha = node.style?.opacity ?? node.opacity ?? 1;
+  context.font = `${fontStyle} ${fontWeight} ${fontSize}px ${fontFamily}`;
+  context.textAlign = canvasTextAlign(node.textAnchor);
+  context.textBaseline = canvasTextBaseline(node.dominantBaseline);
+
+  if ((node.style?.fill ?? node.fill ?? "#111827") !== "none") {
+    context.fillStyle = node.style?.fill ?? node.fill ?? "#111827";
+
+    for (const [index, line] of lines.entries()) {
+      context.fillText(line, node.x, startY + lineHeight * index);
+    }
+  }
+
+  if ((node.style?.stroke ?? node.stroke ?? "none") !== "none") {
+    context.strokeStyle = node.style?.stroke ?? node.stroke ?? "none";
+    context.lineWidth = node.style?.strokeWidth ?? node.strokeWidth ?? 1;
+
+    for (const [index, line] of lines.entries()) {
+      context.strokeText(line, node.x, startY + lineHeight * index);
+    }
+  }
+}
+
+function textLines(value: string): string[] {
+  return value.replace(/\r\n?/g, "\n").split("\n");
+}
+
+function textLineHeight(fontSize: number): number {
+  return fontSize * 1.2;
+}
+
+function textStartY(
+  node: TextNode,
+  fontSize: number,
+  lineHeight: number,
+  lineCount: number
+): number {
+  if (node.dominantBaseline === "middle" || node.dominantBaseline === "central") {
+    return node.y - ((lineCount - 1) * lineHeight) / 2;
+  }
+
+  if (node.dominantBaseline === "bottom" || node.dominantBaseline === "ideographic") {
+    return node.y - (lineCount - 1) * lineHeight;
+  }
+
+  return node.y;
+}
+
+function canvasTextAlign(value: TextNode["textAnchor"] | undefined): CanvasTextAlign {
+  if (value === "middle") {
+    return "center";
+  }
+
+  if (value === "end") {
+    return "end";
+  }
+
+  return "start";
+}
+
+function canvasTextBaseline(value: string | undefined): CanvasTextBaseline {
+  switch (value) {
+    case "hanging":
+    case "middle":
+    case "ideographic":
+    case "top":
+    case "bottom":
+      return value;
+    case "central":
+      return "middle";
+    default:
+      return "alphabetic";
+  }
 }
 
 function drawRect(context: CanvasRenderingContext2D, node: RectNode): void {
@@ -1016,6 +1105,55 @@ function drawBasisControlPolygon(context: CanvasRenderingContext2D, points: Poin
   }
 }
 
+function drawTextAnchorGuides(
+  context: CanvasRenderingContext2D,
+  document: GeometryDocument,
+  nodeIds: NodeId[],
+  viewport: Viewport,
+  pixelRatio: number
+): void {
+  context.save();
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.lineWidth = 1;
+
+  for (const nodeId of nodeIds) {
+    const node = findNodeInTree(document.root, nodeId);
+
+    if (!node || node.type !== "text") {
+      continue;
+    }
+
+    const bounds = boundsForTextNode(node);
+    const anchor = worldToScreen({ x: node.x, y: node.y }, viewport);
+    const guideStart = worldToScreen({ x: bounds.x, y: node.y }, viewport);
+    const guideEnd = worldToScreen({ x: bounds.x + bounds.width, y: node.y }, viewport);
+
+    context.strokeStyle = "#f59e0b";
+    context.setLineDash([3, 3]);
+    context.beginPath();
+    context.moveTo(guideStart.x, guideStart.y);
+    context.lineTo(guideEnd.x, guideEnd.y);
+    context.stroke();
+
+    context.setLineDash([]);
+    context.fillStyle = "#fef3c7";
+    context.strokeStyle = "#d97706";
+    context.beginPath();
+    context.arc(anchor.x, anchor.y, 5, 0, Math.PI * 2);
+    context.fill();
+    context.stroke();
+
+    context.beginPath();
+    context.moveTo(anchor.x - 8, anchor.y);
+    context.lineTo(anchor.x + 8, anchor.y);
+    context.moveTo(anchor.x, anchor.y - 8);
+    context.lineTo(anchor.x, anchor.y + 8);
+    context.stroke();
+  }
+
+  context.restore();
+}
+
 function hitTestNode(
   node: GeometryNode | undefined,
   point: Point,
@@ -1070,6 +1208,10 @@ function isPointNearNode(node: GeometryNode, point: Point, tolerance: number): b
         (hasVisibleFill(node) && node.closed && isPointInsidePolygon(point, pathRenderPoints(node))) ||
         isPointNearPath(point, node, outlineTolerance)
       );
+    case "text": {
+      const bounds = boundsForNode(node);
+      return bounds ? isPointInsideBounds(point, bounds) : false;
+    }
     case "group":
       return false;
   }
@@ -1080,6 +1222,10 @@ function hasVisibleFill(node: GeometryNode): boolean {
 }
 
 function hasVisibleStroke(node: GeometryNode): boolean {
+  if (node.type === "text") {
+    return (node.style?.stroke ?? node.stroke ?? "none") !== "none";
+  }
+
   return node.style?.stroke !== "none";
 }
 
@@ -1088,7 +1234,11 @@ function strokeHitTolerance(node: GeometryNode, tolerance: number): number {
     return tolerance;
   }
 
-  return tolerance + Math.max(0, (node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0) / 2);
+  const strokeWidth = node.type === "text"
+    ? node.style?.strokeWidth ?? node.strokeWidth ?? defaultStyle.strokeWidth ?? 0
+    : node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0;
+
+  return tolerance + Math.max(0, strokeWidth / 2);
 }
 
 function isPointInsideEllipse(
@@ -1357,6 +1507,8 @@ function vertexPointsForNode(node: GeometryNode): Point[] {
       return node.points;
     case "path":
       return [node.start, ...node.segments.map((segment) => segment.to)];
+    case "text":
+      return [{ x: node.x, y: node.y }];
     case "group":
       return [];
   }
@@ -2286,9 +2438,40 @@ function boundsForNode(node: GeometryNode): Bounds | undefined {
     case "path":
       bounds = mergeBounds(pathRenderPoints(node).map((point) => ({ ...point, width: 0, height: 0 })));
       break;
+    case "text":
+      bounds = boundsForTextNode(node);
+      break;
   }
 
   return expandBoundsForStroke(node, bounds);
+}
+
+function boundsForTextNode(node: TextNode): Bounds {
+  const fontSize = node.fontSize ?? 16;
+  const lines = textLines(node.text);
+  const lineHeight = textLineHeight(fontSize);
+  const width = Math.max(fontSize * 0.6, ...lines.map((line) => line.length * fontSize * 0.6));
+  const height = Math.max(lineHeight, lineHeight * lines.length);
+  const x =
+    node.textAnchor === "middle"
+      ? node.x - width / 2
+      : node.textAnchor === "end"
+        ? node.x - width
+        : node.x;
+  const startY = textStartY(node, fontSize, lineHeight, lines.length);
+  const y =
+    node.dominantBaseline === "middle" || node.dominantBaseline === "central"
+      ? node.y - height / 2
+      : node.dominantBaseline === "top" || node.dominantBaseline === "hanging"
+        ? startY
+        : startY - fontSize;
+
+  return {
+    x,
+    y,
+    width,
+    height
+  };
 }
 
 function pathRenderPoints(node: PathNode): Point[] {
@@ -2400,7 +2583,10 @@ function expandBoundsForStroke(node: GeometryNode, bounds: Bounds | undefined): 
     return bounds;
   }
 
-  const padding = Math.max(0, (node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0) / 2);
+  const strokeWidth = node.type === "text"
+    ? node.style?.strokeWidth ?? node.strokeWidth ?? defaultStyle.strokeWidth ?? 0
+    : node.style?.strokeWidth ?? defaultStyle.strokeWidth ?? 0;
+  const padding = Math.max(0, strokeWidth / 2);
 
   return {
     x: bounds.x - padding,

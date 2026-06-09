@@ -422,6 +422,7 @@ Supported nodes:
 * PolygonNode
 * PolylineNode
 * LineNode
+* TextNode
 
 ---
 
@@ -456,6 +457,53 @@ Supported:
 * ArcSegment
 
 The Geometry AST should be geometry-oriented rather than SVG-string-oriented.
+
+## TextNode
+
+Text is represented as Geometry AST, not raw SVG text markup.
+
+v0.1 supports a plain text `TextNode`.
+The `text` value may include `\n` line breaks.
+
+```ts
+type TextNode = {
+  id: string
+  type: "text"
+  x: number
+  y: number
+  text: string
+
+  fontFamily?: string
+  fontSize?: number
+  fontWeight?: string | number
+  fontStyle?: "normal" | "italic"
+  textAnchor?: "start" | "middle" | "end"
+  dominantBaseline?: string
+}
+```
+
+Future `tspan` and rich text support should extend `TextNode` with optional `runs`.
+Do not remove or replace `text`; keep it as the backward-compatible plain text value.
+
+```ts
+type TextRun = {
+  text: string
+  dx?: number
+  dy?: number
+  x?: number
+  y?: number
+  style?: Partial<TextStyle>
+}
+```
+
+Import/export rules:
+
+* `<text>Text</text>` maps to `TextNode.text`.
+* Line breaks in `TextNode.text` are rendered as multiple canvas text lines.
+* Line breaks in `TextNode.text` are exported as `<tspan>` lines so SVG output preserves multiline text.
+* `<text><tspan>...</tspan></text>` may later map to `TextNode.runs`; v0.1 may flatten simple `<tspan>` lines into `TextNode.text` with `\n`.
+* When `runs` is absent and `text` has no line breaks, export a single `<text>` element.
+* When `runs` is present, export `<text>` with `<tspan>` children.
 
 ---
 

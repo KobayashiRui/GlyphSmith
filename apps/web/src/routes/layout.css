@@ -1017,6 +1017,21 @@ canvas.panning {
 	outline: none;
 }
 
+.text-area-field {
+	width: 100%;
+	min-width: 0;
+	min-height: 70px;
+	resize: vertical;
+	border: 1px solid var(--color-gs-border);
+	border-radius: 6px;
+	background: var(--color-gs-input);
+	padding: 7px 8px;
+	color: var(--color-gs-text);
+	font: inherit;
+	line-height: 1.4;
+	outline: none;
+}
+
 .paint-field {
 	display: grid;
 	grid-template-columns: 34px minmax(0, 1fr) auto;

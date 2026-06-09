@@ -10,7 +10,8 @@
 		type NodeStyle,
 		type PathNode,
 		type Point,
-		type Segment
+		type Segment,
+		type TextNode
 	} from '@glyphsmith/ast';
 	import {
 		createAppendPathSegmentPatch,
@@ -410,6 +411,11 @@
 
 		if (isShapeTool(tool)) {
 			insertShapeAtPoint(tool, worldPoint);
+			return;
+		}
+
+		if (tool === 'text') {
+			insertTextAtPoint(worldPoint);
 			return;
 		}
 
@@ -957,6 +963,31 @@
 		nextNodeIndex += 1;
 		cancelDraft();
 		shapePreviewPoint = placementPoint;
+	}
+
+	function insertTextAtPoint(point: Point) {
+		const id = `text-${nextNodeIndex}`;
+		const placementPoint = clampPointToDocument(point);
+		const node: TextNode = {
+			id,
+			type: 'text',
+			x: placementPoint.x,
+			y: placementPoint.y,
+			text: 'Text',
+			fill: '#111827',
+			fontFamily: 'Inter, system-ui, sans-serif',
+			fontSize: 24,
+			fontWeight: '400'
+		};
+
+		commitPatch({
+			op: 'insert',
+			parentId: geometryDocument.root.id,
+			node
+		});
+		selectedNodeIds = [id];
+		nextNodeIndex += 1;
+		cancelDraft();
 	}
 
 	function clampPointToDocument(point: Point): Point {
@@ -1792,7 +1823,61 @@
 			}
 		}
 
+		if (node.type === 'text') {
+			if (field === 'x' || field === 'y') {
+				return { [field]: value } as Partial<GeometryNode>;
+			}
+		}
+
 		return undefined;
+	}
+
+	function updateSelectedTextContent(rawValue: string) {
+		if (!selectedNode || selectedNode.type !== 'text') {
+			return;
+		}
+
+		commitPatch({
+			op: 'update',
+			target: selectedNode.id,
+			changes: {
+				text: rawValue
+			} as Partial<GeometryNode>
+		});
+	}
+
+	function updateSelectedTextField(field: 'dominantBaseline' | 'fontFamily' | 'fontStyle' | 'fontWeight' | 'textAnchor', rawValue: string) {
+		if (!selectedNode || selectedNode.type !== 'text') {
+			return;
+		}
+
+		commitPatch({
+			op: 'update',
+			target: selectedNode.id,
+			changes: {
+				[field]: rawValue.trim() || undefined
+			} as Partial<GeometryNode>
+		});
+	}
+
+	function updateSelectedTextNumber(field: 'fontSize', rawValue: string) {
+		if (!selectedNode || selectedNode.type !== 'text') {
+			return;
+		}
+
+		const value = Number(rawValue);
+
+		if (!Number.isFinite(value)) {
+			return;
+		}
+
+		commitPatch({
+			op: 'update',
+			target: selectedNode.id,
+			changes: {
+				[field]: Math.max(1, value)
+			} as Partial<GeometryNode>
+		});
 	}
 
 	function colorPickerValue(value: string | undefined, fallback: string): string {
@@ -2580,6 +2665,7 @@
 			<button class:active={tool === 'rect'} type="button" onclick={() => setTool('rect')}>Rect</button>
 			<button class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')}>Ellipse</button>
 			<button class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>Triangle</button>
+			<button class:active={tool === 'text'} type="button" onclick={() => setTool('text')}>Text</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>Line</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>Arc</button>
 			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Cubic Bezier</button>
@@ -2894,6 +2980,82 @@
 
 			<details class="inspector-section" open>
 				<summary>
+					<span>Text</span>
+					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
+						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
+						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+					</svg>
+				</summary>
+				{#if selectedNode && selectedNodeIds.length === 1 && selectedNode.type === 'text'}
+					<div class="field-grid">
+						<label for="text-content">Content</label>
+						<textarea
+							id="text-content"
+							class="text-area-field"
+							value={selectedNode.text}
+							oninput={(event) => updateSelectedTextContent(event.currentTarget.value)}
+						></textarea>
+
+						<label for="text-font-family">Family</label>
+						<input
+							id="text-font-family"
+							class="text-field"
+							value={selectedNode.fontFamily ?? ''}
+							oninput={(event) => updateSelectedTextField('fontFamily', event.currentTarget.value)}
+						/>
+
+						<label for="text-font-size">Size</label>
+						<input
+							id="text-font-size"
+							class="text-field"
+							min="1"
+							step="1"
+							type="number"
+							value={selectedNode.fontSize ?? 16}
+							oninput={(event) => updateSelectedTextNumber('fontSize', event.currentTarget.value)}
+						/>
+
+						<label for="text-font-weight">Weight</label>
+						<input
+							id="text-font-weight"
+							class="text-field"
+							value={String(selectedNode.fontWeight ?? '')}
+							oninput={(event) => updateSelectedTextField('fontWeight', event.currentTarget.value)}
+						/>
+
+						<label for="text-font-style">Style</label>
+						<div class="line-style-options" id="text-font-style">
+							{#each ['normal', 'italic'] as fontStyle}
+								<button
+									class:active={(selectedNode.fontStyle ?? 'normal') === fontStyle}
+									type="button"
+									onclick={() => updateSelectedTextField('fontStyle', fontStyle)}
+								>
+									{fontStyle}
+								</button>
+							{/each}
+						</div>
+
+						<label for="text-anchor">Anchor</label>
+						<div class="line-style-options" id="text-anchor">
+							{#each ['start', 'middle', 'end'] as textAnchor}
+								<button
+									class:active={(selectedNode.textAnchor ?? 'start') === textAnchor}
+									type="button"
+									onclick={() => updateSelectedTextField('textAnchor', textAnchor)}
+								>
+									{textAnchor}
+								</button>
+							{/each}
+						</div>
+					</div>
+				{:else}
+					<div class="empty-row">{selectedNodeIds.length === 1 ? 'N/A' : selectedNodeIds.length > 1 ? `${selectedNodeIds.length} selected` : 'No selection'}</div>
+				{/if}
+			</details>
+
+			<details class="inspector-section" open>
+				<summary>
 					<span>Page Background</span>
 					<svg aria-hidden="true" class="section-chevron" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.5">
 						<path class="section-chevron-closed" stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5" />
@@ -3135,6 +3297,26 @@
 								value={selectedNode.y2}
 								oninput={(event) => updateSelectedGeometryNumber('y2', event.currentTarget.value)}
 							/>
+						{:else if selectedNode.type === 'text'}
+							<label for="text-x">X</label>
+							<input
+								id="text-x"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.x}
+								oninput={(event) => updateSelectedGeometryNumber('x', event.currentTarget.value)}
+							/>
+
+							<label for="text-y">Y</label>
+							<input
+								id="text-y"
+								class="text-field"
+								step="1"
+								type="number"
+								value={selectedNode.y}
+								oninput={(event) => updateSelectedGeometryNumber('y', event.currentTarget.value)}
+							/>
 						{:else}
 							<div class="empty-row">N/A</div>
 						{/if}
@@ -3160,13 +3342,13 @@
 								aria-label="Fill color"
 								class="color-field"
 								type="color"
-								value={colorPickerValue(selectedNode.style?.fill, uiColors.primary)}
+								value={colorPickerValue(selectedNode.style?.fill ?? (selectedNode.type === 'text' ? selectedNode.fill : undefined), uiColors.primary)}
 								oninput={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
 							/>
 							<input
 								id="fill"
 								class="text-field"
-								value={selectedNode.style?.fill ?? 'none'}
+								value={selectedNode.style?.fill ?? (selectedNode.type === 'text' ? selectedNode.fill : undefined) ?? 'none'}
 								oninput={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
 							/>
 							<button class="inline-button" type="button" onclick={() => updateSelectedStyle('fill', 'none')}>None</button>
@@ -3178,13 +3360,13 @@
 								aria-label="Stroke color"
 								class="color-field"
 								type="color"
-								value={colorPickerValue(selectedNode.style?.stroke, '#111827')}
+								value={colorPickerValue(selectedNode.style?.stroke ?? (selectedNode.type === 'text' ? selectedNode.stroke : undefined), '#111827')}
 								oninput={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
 							/>
 							<input
 								id="stroke"
 								class="text-field"
-								value={selectedNode.style?.stroke ?? '#111827'}
+								value={selectedNode.style?.stroke ?? (selectedNode.type === 'text' ? selectedNode.stroke : undefined) ?? '#111827'}
 								oninput={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
 							/>
 						</div>
@@ -3196,7 +3378,7 @@
 							min="0"
 							step="0.5"
 							type="number"
-							value={selectedNode.style?.strokeWidth ?? 2}
+							value={selectedNode.style?.strokeWidth ?? (selectedNode.type === 'text' ? selectedNode.strokeWidth : undefined) ?? 2}
 							oninput={(event) => updateSelectedStyle('strokeWidth', event.currentTarget.value)}
 						/>
 
@@ -3266,7 +3448,7 @@
 							max="1"
 							step="0.05"
 							type="number"
-							value={selectedNode.style?.opacity ?? 1}
+							value={selectedNode.style?.opacity ?? (selectedNode.type === 'text' ? selectedNode.opacity : undefined) ?? 1}
 							oninput={(event) => updateSelectedStyle('opacity', event.currentTarget.value)}
 						/>
 					</div>
