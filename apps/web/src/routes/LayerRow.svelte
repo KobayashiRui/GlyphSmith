@@ -10,6 +10,7 @@
 		expandable: boolean;
 		node: GeometryNode;
 		parentId: NodeId;
+		sortIndex?: number;
 		uiIndex: number;
 	};
 
@@ -29,10 +30,10 @@
 			return item.node.id;
 		},
 		get index() {
-			return item.uiIndex;
+			return item.sortIndex ?? item.uiIndex;
 		},
 		get group() {
-			return `layers-${item.parentId}`;
+			return 'layers';
 		},
 		type: 'layer',
 		modifiers: [RestrictToVerticalAxis]

@@ -100,6 +100,55 @@ export function reorderChildren(
   };
 }
 
+export function moveNodeToParent(
+  document: GeometryDocument,
+  nodeId: string,
+  targetParentId: string,
+  targetIndex?: number
+): GeometryDocument {
+  if (nodeId === document.root.id || nodeId === targetParentId) {
+    return document;
+  }
+
+  const node = findNode(document, nodeId);
+  const sourceParent = findParentNode(document, nodeId);
+  const targetParent = findNode(document, targetParentId);
+
+  if (!node || !sourceParent || !targetParent || targetParent.type !== "group") {
+    return document;
+  }
+
+  if (node.type === "group" && findNodeInTree(node, targetParentId)) {
+    return document;
+  }
+
+  const sourceIndex = sourceParent.children.findIndex((child) => child.id === nodeId);
+
+  if (sourceIndex < 0) {
+    return document;
+  }
+
+  if (sourceParent.id === targetParentId) {
+    return reorderChildren(document, sourceParent.id, sourceIndex, targetIndex ?? targetParent.children.length - 1);
+  }
+
+  const withoutSource = removeDirectChild(document.root, sourceParent.id, nodeId) as GroupNode;
+  const nextTargetParent = findNodeInTree(withoutSource, targetParentId);
+
+  if (!nextTargetParent || nextTargetParent.type !== "group") {
+    return document;
+  }
+
+  const insertAt = targetIndex === undefined
+    ? nextTargetParent.children.length
+    : clamp(targetIndex, 0, nextTargetParent.children.length);
+
+  return {
+    ...document,
+    root: insertNode(withoutSource, targetParentId, node, insertAt) as GroupNode
+  };
+}
+
 export function groupNodes(
   document: GeometryDocument,
   nodeIds: string[],
@@ -207,6 +256,24 @@ function insertNode(
   return {
     ...current,
     children: current.children.map((child) => insertNode(child, parentId, node, index))
+  };
+}
+
+function removeDirectChild(current: GeometryNode, parentId: string, childId: string): GeometryNode {
+  if (current.type !== "group") {
+    return current;
+  }
+
+  if (current.id === parentId) {
+    return {
+      ...current,
+      children: current.children.filter((child) => child.id !== childId)
+    };
+  }
+
+  return {
+    ...current,
+    children: current.children.map((child) => removeDirectChild(child, parentId, childId))
   };
 }
 

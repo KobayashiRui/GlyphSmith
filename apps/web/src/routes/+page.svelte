@@ -40,7 +40,7 @@
 		type Tool,
 		type Viewport
 	} from '@glyphsmith/editor';
-	import { applyPatch, findNode, findParentNode, groupNodes, reorderChildren, ungroupNode } from '@glyphsmith/kernel';
+	import { applyPatch, findNode, findParentNode, groupNodes, moveNodeToParent, reorderChildren, ungroupNode } from '@glyphsmith/kernel';
 	import { exportToSvg } from '@glyphsmith/svg';
 	import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/svelte';
 	import { isSortable } from '@dnd-kit/svelte/sortable';
@@ -123,7 +123,11 @@
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
 	const layerItems = $derived(buildLayerItems(geometryDocument.root, expandedGroupIds));
-	const visibleLayerItems = $derived(layerItems.filter((item) => !isHiddenByLayerDrag(item)));
+	const visibleLayerItems = $derived(
+		layerItems
+			.filter((item) => !isHiddenByLayerDrag(item))
+			.map((item, sortIndex) => ({ ...item, sortIndex }))
+	);
 	const svgExportPages = $derived(
 		project.pages.map((page, index) => ({
 			document: page.document,
@@ -1328,11 +1332,11 @@
 		const sourceItem = visibleLayerItems.find((item) => item.node.id === source.id);
 		const targetItem = visibleLayerItems.find((item) => item.node.id === target.id);
 
-		if (!sourceItem || !targetItem || sourceItem.parentId !== targetItem.parentId) {
+		if (!sourceItem || !targetItem) {
 			return;
 		}
 
-		reorderLayer(sourceItem, targetItem);
+		moveLayer(sourceItem, targetItem);
 	}
 
 	function handleLayerSortEnd(event: DragEndEvent) {
@@ -1358,12 +1362,49 @@
 		redoStack = [];
 	}
 
+	function moveLayer(sourceItem: LayerItem, targetItem: LayerItem) {
+		if (targetItem.node.type === 'group' && targetItem.node.id !== sourceItem.parentId) {
+			moveLayerIntoGroup(sourceItem, targetItem.node.id);
+			return;
+		}
+
+		if (sourceItem.parentId === targetItem.parentId) {
+			reorderLayer(sourceItem, targetItem);
+			return;
+		}
+
+		moveLayerToParent(sourceItem, targetItem.parentId, targetItem.astIndex);
+	}
+
 	function reorderLayer(sourceItem: LayerItem, targetItem: LayerItem) {
-		if (sourceItem.parentId !== targetItem.parentId || sourceItem.astIndex === targetItem.astIndex) {
+		if (sourceItem.astIndex === targetItem.astIndex) {
 			return;
 		}
 
 		updateActiveDocument(reorderChildren(geometryDocument, sourceItem.parentId, sourceItem.astIndex, targetItem.astIndex));
+	}
+
+	function moveLayerIntoGroup(sourceItem: LayerItem, targetParentId: NodeId) {
+		const targetParent = findNode(geometryDocument, targetParentId);
+
+		if (!targetParent || targetParent.type !== 'group' || !canMoveLayerToParent(sourceItem.node.id, targetParentId)) {
+			return;
+		}
+
+		updateActiveDocument(moveNodeToParent(geometryDocument, sourceItem.node.id, targetParentId, targetParent.children.length));
+		expandedGroupIds = [...new Set([...expandedGroupIds, targetParentId])];
+	}
+
+	function moveLayerToParent(sourceItem: LayerItem, targetParentId: NodeId, targetIndex: number) {
+		if (!canMoveLayerToParent(sourceItem.node.id, targetParentId)) {
+			return;
+		}
+
+		updateActiveDocument(moveNodeToParent(geometryDocument, sourceItem.node.id, targetParentId, targetIndex));
+	}
+
+	function canMoveLayerToParent(nodeId: NodeId, targetParentId: NodeId) {
+		return nodeId !== geometryDocument.root.id && nodeId !== targetParentId && !isAncestorOf(nodeId, targetParentId);
 	}
 
 	function selectNode(nodeId: NodeId, additive = false) {
@@ -1502,6 +1543,41 @@
 		if (editingGroupId === groupId) {
 			editingGroupId = undefined;
 		}
+	}
+
+	function canRemoveSelectionFromGroup() {
+		if (selectedNodeIds.length !== 1) {
+			return false;
+		}
+
+		const parent = findParentNode(geometryDocument, selectedNodeIds[0]!);
+
+		return Boolean(parent && parent.id !== geometryDocument.root.id);
+	}
+
+	function removeSelectionFromGroup() {
+		if (!canRemoveSelectionFromGroup()) {
+			return;
+		}
+
+		const nodeId = selectedNodeIds[0]!;
+		const parent = findParentNode(geometryDocument, nodeId);
+		const grandParent = parent ? findParentNode(geometryDocument, parent.id) : undefined;
+
+		if (!parent || !grandParent) {
+			return;
+		}
+
+		const parentIndex = grandParent.children.findIndex((child) => child.id === parent.id);
+
+		if (parentIndex < 0) {
+			return;
+		}
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		updateActiveDocument(moveNodeToParent(geometryDocument, nodeId, grandParent.id, parentIndex + 1));
+		selectedNodeIds = [nodeId];
 	}
 
 	function nextPageId(): string {
@@ -2629,6 +2705,17 @@
 						}}
 					>
 						Ungroup
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						disabled={!canRemoveSelectionFromGroup()}
+						onclick={() => {
+							removeSelectionFromGroup();
+							closeLayerContextMenu();
+						}}
+					>
+						Remove from Group
 					</button>
 					<button
 						class="danger"
