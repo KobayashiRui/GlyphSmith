@@ -41,7 +41,7 @@
 		type Viewport
 	} from '@glyphsmith/editor';
 	import { applyPatch, findNode, findParentNode, groupNodes, moveNodeToParent, reorderChildren, ungroupNode } from '@glyphsmith/kernel';
-	import { exportToSvg } from '@glyphsmith/svg';
+	import { exportToSvg, importFromSvg } from '@glyphsmith/svg';
 	import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/svelte';
 	import { isSortable } from '@dnd-kit/svelte/sortable';
 	import { strToU8, zipSync } from 'fflate';
@@ -54,6 +54,7 @@
 	let { data }: { data: PageData } = $props();
 
 	let canvas: HTMLCanvasElement;
+	let svgImportInput = $state<HTMLInputElement | undefined>();
 	let context = $state<CanvasRenderingContext2D | undefined>();
 	let project = $state<GlyphSmithProject>(initialProjectFromData());
 	let selectedNodeIds = $state<NodeId[]>([]);
@@ -85,6 +86,8 @@
 	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
 	let settingsOpen = $state(false);
+	let svgImportOpen = $state(false);
+	let svgImportText = $state('');
 	let svgExportOpen = $state(false);
 	let editingGroupId = $state<NodeId | undefined>();
 	let expandedGroupIds = $state<NodeId[]>([]);
@@ -1121,6 +1124,74 @@
 		finishPathDrawing();
 		fitCanvasToActivePageAfterUpdate();
 		markProjectChanged();
+	}
+
+	function addImportedSvgPage(importedDocument: GeometryDocument, pageName: string) {
+		const pageId = nextPageId();
+		const page = {
+			id: pageId,
+			name: pageName,
+			document: {
+				...importedDocument,
+				id: `${pageId}-document`,
+				name: pageName
+			}
+		};
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			activePageId: page.id,
+			pages: [...project.pages, page],
+			updatedAt: new Date().toISOString()
+		};
+		selectedNodeIds = [];
+		editingGroupId = undefined;
+		finishPathDrawing();
+		fitCanvasToActivePageAfterUpdate();
+		markProjectChanged();
+	}
+
+	async function importSvgFile(event: Event) {
+		const input = event.currentTarget as HTMLInputElement;
+		const file = input.files?.[0];
+		input.value = '';
+
+		if (!file) {
+			return;
+		}
+
+		const pageName = file.name.replace(/\.svg$/i, '').trim() || `Page ${project.pages.length + 1}`;
+		let importedDocument: GeometryDocument;
+
+		try {
+			importedDocument = importFromSvg(await file.text());
+		} catch (error) {
+			window.alert(error instanceof Error ? error.message : 'Failed to import SVG.');
+			return;
+		}
+
+		addImportedSvgPage(importedDocument, pageName);
+		svgImportOpen = false;
+	}
+
+	function importSvgText() {
+		const svgText = svgImportText.trim();
+
+		if (!svgText) {
+			return;
+		}
+
+		try {
+			addImportedSvgPage(importFromSvg(svgText), `Imported SVG ${project.pages.length + 1}`);
+		} catch (error) {
+			window.alert(error instanceof Error ? error.message : 'Failed to import SVG.');
+			return;
+		}
+
+		svgImportText = '';
+		svgImportOpen = false;
 	}
 
 	function duplicatePage(pageId = project.activePageId) {
@@ -2513,6 +2584,43 @@
 		</div>
 
 		<div class="topbar-status">
+			<div class="export-menu">
+				<input
+					bind:this={svgImportInput}
+					accept=".svg,image/svg+xml"
+					hidden
+					type="file"
+					onchange={importSvgFile}
+				/>
+				<button type="button" aria-expanded={svgImportOpen} onclick={() => (svgImportOpen = !svgImportOpen)}>
+					Import SVG
+				</button>
+				{#if svgImportOpen}
+					<div class="export-popover import-popover">
+						<div class="export-popover-header">
+							<h2>Import SVG</h2>
+							<button type="button" aria-label="Close import menu" onclick={() => (svgImportOpen = false)}>x</button>
+						</div>
+						<button class="import-file-button" type="button" onclick={() => svgImportInput?.click()}>
+							Choose SVG File
+						</button>
+						<label class="import-text-field" for="svg-import-text">
+							<span>Paste SVG</span>
+							<textarea
+								id="svg-import-text"
+								placeholder="<svg ...>"
+								bind:value={svgImportText}
+							></textarea>
+						</label>
+						<div class="export-popover-footer">
+							<span>{svgImportText.trim() ? 'Ready to import' : 'Paste SVG text'}</span>
+							<button class="primary" type="button" disabled={!svgImportText.trim()} onclick={importSvgText}>
+								Import
+							</button>
+						</div>
+					</div>
+				{/if}
+			</div>
 			<div class="export-menu">
 				<button type="button" aria-expanded={svgExportOpen} onclick={() => (svgExportOpen = !svgExportOpen)}>
 					Export SVG

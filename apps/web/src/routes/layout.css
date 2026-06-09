@@ -168,6 +168,31 @@ button {
 	color: var(--color-gs-text-subtle);
 }
 
+.import-popover {
+	display: grid;
+	gap: 10px;
+	width: 360px;
+}
+
+.import-file-button {
+	width: 100%;
+}
+
+.import-text-field {
+	display: grid;
+	gap: 6px;
+	color: var(--color-gs-text-muted);
+	font-size: 11px;
+	font-weight: 700;
+	text-transform: uppercase;
+}
+
+.import-text-field textarea {
+	min-height: 180px;
+	color: var(--color-gs-text);
+	text-transform: none;
+}
+
 .export-mode-list,
 .export-page-list {
 	display: grid;
