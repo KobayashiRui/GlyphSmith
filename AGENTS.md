@@ -205,24 +205,49 @@ Keep CLI behavior deterministic and non-interactive so installed agent skills ca
 
 The repository-level `pnpm run dev` command should use Turborepo to run `apps/cli` and `apps/web` as separate dev processes.
 
+Examples are treated as first-class projects.
+
+```txt
+examples/playground.gs.json
+examples/glyphsmith.gs.json
+```
+
+`examples/playground.gs.json` is the default development project.
+`examples/glyphsmith.gs.json` contains the official GlyphSmith icon set.
+
+When implementing editor features, verify functionality using both:
+
+* `examples/playground.gs.json`
+* `examples/glyphsmith.gs.json`
+
+Do not hardcode assumptions about a specific example project.
+
 Development defaults:
 
 ```txt
-Project: /private/tmp/glyphsmith-dev.gs.json
+Project: examples/playground.gs.json
 UI:      http://localhost:6201
 Host:    ws://localhost:6202/ws
 MCP:     http://localhost:6202/mcp
 ```
 
-The dev command should use a scratch project under `/private/tmp` so development startup does not create a root `glyphsmith.gs.json`.
+`pnpm run dev` should open `examples/playground.gs.json`.
+`pnpm run dev:icons` should open `examples/glyphsmith.gs.json`.
 
-Development ports should be strict. If `6201` or `6202` is unavailable, fail clearly instead of falling back to another port, because web and host are launched as separate processes.
+Development scripts pass fixed ports. If `6201` or `6202` is unavailable, fail clearly instead of falling back to another port, because web and host are launched as separate processes.
+In CLI behavior, explicit `--port` values are fixed ports.
+In open mode, `--port` is the Web UI port and the Host/MCP port is `port + 1`.
+In host mode, `--port` is the Host/MCP port.
+When ports are omitted in normal CLI usage, the CLI may find the next available port.
 
 In monorepo development, `apps/web` owns the Vite dev server and `apps/cli` should run only the CLI host through:
 
 ```bash
-glyphsmith host /private/tmp/glyphsmith-dev --host-port 6202 --strict-ports
+glyphsmith host --example playground
 ```
+
+Use `--example <name>` for development scripts instead of relative paths such as `../../examples/playground`.
+The CLI resolves examples from the repository/package root.
 
 MCP registration commands:
 

@@ -8,7 +8,8 @@
   "scripts": {
     "build": "tsc",
     "check-types": "tsc --noEmit",
-    "dev": "pnpm run build && node dist/index.js host /private/tmp/glyphsmith-dev --host-port 6202 --strict-ports"
+    "dev": "pnpm run build && node dist/index.js host --example playground",
+    "dev:icons": "pnpm run build && node dist/index.js host --example glyphsmith"
   },
   "devDependencies": {
     "@repo/typescript-config": "workspace:*",

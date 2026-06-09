@@ -9,7 +9,8 @@ import { fileURLToPath } from "node:url";
 import { ProjectStore } from "./project-store.js";
 import { startHostServer } from "./server.js";
 
-const DEFAULT_PORT = "6001";
+const DEFAULT_PORT = "6201";
+const DEFAULT_HOST_PORT = "6202";
 const DEFAULT_HOST = "127.0.0.1";
 const DEV_BIND_HOST = "0.0.0.0";
 const DEV_PUBLIC_HOST = "localhost";
@@ -19,12 +20,11 @@ type CliCommand = "host" | "init" | "open";
 
 type CliOptions = {
   command: CliCommand;
+  example?: string;
   help: boolean;
-  hostOnly: boolean;
-  hostPort?: string;
   port?: string;
+  portFixed: boolean;
   projectFile?: string;
-  strictPorts: boolean;
 };
 
 async function main(): Promise<void> {
@@ -47,7 +47,7 @@ async function main(): Promise<void> {
     return;
   }
 
-  const projectFile = resolveProjectFile(options.projectFile);
+  const projectFile = resolveProjectFile(options);
   const store = new ProjectStore(projectFile);
 
   if (options.command === "init") {
@@ -57,10 +57,8 @@ async function main(): Promise<void> {
   }
 
   if (options.command === "host") {
-    const requestedHostPort = options.hostPort ?? nextPort(DEFAULT_PORT);
-    const hostPort = options.strictPorts
-      ? await requireAvailablePort(requestedHostPort, new Set(), DEV_BIND_HOST)
-      : await findAvailablePort(requestedHostPort, new Set(), DEV_BIND_HOST);
+    const requestedHostPort = options.port ?? DEFAULT_HOST_PORT;
+    const hostPort = await requireAvailablePort(requestedHostPort, new Set(), DEV_BIND_HOST);
     const mcpUrl = `http://${DEV_PUBLIC_HOST}:${hostPort}/mcp`;
     const hostServer = startHostServer({
       host: DEV_BIND_HOST,
@@ -87,15 +85,13 @@ async function main(): Promise<void> {
   }
 
   const requestedPort = options.port ?? DEFAULT_PORT;
-  const port = options.hostOnly
-    ? requestedPort
-    : options.strictPorts
-      ? await requireAvailablePort(requestedPort)
-      : await findAvailablePort(requestedPort);
-  const requestedHostPort = options.hostPort ?? nextPort(port);
-  const hostPort = options.strictPorts
-    ? await requireAvailablePort(requestedHostPort, options.hostOnly ? new Set() : new Set([port]))
-    : await findAvailablePort(requestedHostPort, options.hostOnly ? new Set() : new Set([port]));
+  const port = options.portFixed
+    ? await requireAvailablePort(requestedPort)
+    : await findAvailablePort(requestedPort);
+  const requestedHostPort = nextPort(port);
+  const hostPort = options.portFixed
+    ? await requireAvailablePort(requestedHostPort, new Set([port]))
+    : await findAvailablePort(requestedHostPort, new Set([port]));
   const mcpUrl = `http://${DEFAULT_HOST}:${hostPort}/mcp`;
   const hostServer = startHostServer({
     host: DEFAULT_HOST,
@@ -105,26 +101,15 @@ async function main(): Promise<void> {
   });
 
   console.log(`✓ Project: ${projectFile}`);
-  if (!options.hostOnly && port !== requestedPort) {
+  if (port !== requestedPort) {
     console.log(`✓ UI port ${requestedPort} is unavailable, using ${port}`);
   }
   if (hostPort !== requestedHostPort) {
     console.log(`✓ Host port ${requestedHostPort} is unavailable, using ${hostPort}`);
   }
-  console.log(`✓ UI ${options.hostOnly ? "expected" : "running"} on http://${DEFAULT_HOST}:${port}`);
+  console.log(`✓ UI running on http://${DEFAULT_HOST}:${port}`);
   console.log(`✓ Host running on ws://${DEFAULT_HOST}:${hostPort}/ws`);
   console.log(`✓ MCP running on ${mcpUrl}`);
-
-  if (options.hostOnly) {
-    const shutdownHostOnly = () => {
-      hostServer.close();
-      store.close();
-    };
-
-    process.once("SIGINT", shutdownHostOnly);
-    process.once("SIGTERM", shutdownHostOnly);
-    return;
-  }
 
   const child = spawn("pnpm", ["--filter", "web", "dev", "--host", DEFAULT_HOST], {
     cwd: resolve(cliDirectory, "../../.."),
@@ -195,23 +180,40 @@ function isPortAvailable(port: number, host = DEFAULT_HOST): Promise<boolean> {
   });
 }
 
-function resolveProjectFile(projectFile?: string): string {
-  const rawPath = projectFile ?? "glyphsmith.gs.json";
+function resolveProjectFile(options: Pick<CliOptions, "example" | "projectFile">): string {
+  if (options.example && options.projectFile) {
+    throw new Error("--example cannot be used with a project path.");
+  }
+
+  if (options.example) {
+    return resolveExampleProjectFile(options.example);
+  }
+
+  const rawPath = options.projectFile ?? "glyphsmith.gs.json";
   const trimmedPath = rawPath.replace(/[\\/]+$/, "");
   const filePath = /\.gs\.json$/i.test(trimmedPath) ? trimmedPath : `${trimmedPath}.gs.json`;
 
   return resolve(process.cwd(), filePath);
 }
 
+function resolveExampleProjectFile(exampleName: string): string {
+  const normalizedName = exampleName.trim().replace(/\.gs\.json$/i, "");
+
+  if (!/^[\w-]+$/.test(normalizedName)) {
+    throw new Error(`Invalid example name: ${exampleName}`);
+  }
+
+  return resolve(cliDirectory, "../../..", "examples", `${normalizedName}.gs.json`);
+}
+
 function parseArgs(args: string[]): CliOptions {
   const options: CliOptions = {
     command: "open",
-    hostOnly: false,
-    hostPort: undefined,
+    example: undefined,
     help: false,
     port: undefined,
-    projectFile: undefined,
-    strictPorts: false
+    portFixed: false,
+    projectFile: undefined
   };
 
   for (let index = 0; index < args.length; index += 1) {
@@ -223,16 +225,6 @@ function parseArgs(args: string[]): CliOptions {
 
     if (arg === "--help" || arg === "-h") {
       options.help = true;
-      continue;
-    }
-
-    if (arg === "--host-only") {
-      options.hostOnly = true;
-      continue;
-    }
-
-    if (arg === "--strict-ports") {
-      options.strictPorts = true;
       continue;
     }
 
@@ -249,29 +241,31 @@ function parseArgs(args: string[]): CliOptions {
       }
 
       options.port = parsePort(value);
+      options.portFixed = true;
       index += 1;
       continue;
     }
 
     if (arg.startsWith("--port=")) {
       options.port = parsePort(arg.slice("--port=".length));
+      options.portFixed = true;
       continue;
     }
 
-    if (arg === "--host-port") {
+    if (arg === "--example") {
       const value = args[index + 1];
 
       if (!value || value.startsWith("-")) {
-        throw new Error("--host-port requires a value.");
+        throw new Error("--example requires a value.");
       }
 
-      options.hostPort = parsePort(value);
+      options.example = value;
       index += 1;
       continue;
     }
 
-    if (arg.startsWith("--host-port=")) {
-      options.hostPort = parsePort(arg.slice("--host-port=".length));
+    if (arg.startsWith("--example=")) {
+      options.example = arg.slice("--example=".length);
       continue;
     }
 
@@ -607,6 +601,7 @@ function printHelp(): void {
 Usage:
   glyphsmith [project]
   glyphsmith host [project]
+  glyphsmith host --example <name>
   glyphsmith init [project]
   glyphsmith mcp install <codex|claude> --url <mcp-url> [--project <project-dir>]
   glyphsmith skills install <codex|claude> [--project <project-dir>] [--force]
@@ -616,10 +611,11 @@ Project paths may omit .gs.json:
   glyphsmith logo.gs.json
 
 Options:
-  --port <port>       Web UI port. Defaults to ${DEFAULT_PORT}.
-  --host-port <port>  CLI host WebSocket/MCP port. Defaults to UI port + 1.
-  --host-only         Start only the CLI host/MCP server.
-  --strict-ports      Fail instead of falling back when requested ports are unavailable.
+  --port <port>     Web UI port for open mode. Host/MCP port for host mode.
+                    Defaults to ${DEFAULT_PORT} for open mode and ${DEFAULT_HOST_PORT} for host mode.
+  --example <name>  Open examples/<name>.gs.json.
+
+Explicit --port values are always treated as fixed ports.
 `);
 }
 

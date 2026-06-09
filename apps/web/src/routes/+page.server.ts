@@ -1,10 +1,15 @@
 import { isGlyphSmithProject } from '@glyphsmith/ast';
 import { existsSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
+
+const developmentProjectFile = fileURLToPath(
+	new URL('../../../../examples/playground.gs.json', import.meta.url)
+);
 
 export function load() {
 	const isDevelopment = process.env.NODE_ENV !== 'production';
 	const projectFile =
-		process.env.GLYPHSMITH_PROJECT_FILE ?? (isDevelopment ? '/private/tmp/glyphsmith-dev.gs.json' : undefined);
+		process.env.GLYPHSMITH_PROJECT_FILE ?? (isDevelopment ? developmentProjectFile : undefined);
 	const hostWebSocketUrl =
 		process.env.GLYPHSMITH_HOST_WS_URL ?? (isDevelopment ? 'ws://localhost:6202/ws' : undefined);
 

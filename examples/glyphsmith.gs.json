@@ -1,0 +1,291 @@
+{
+  "schemaVersion": 1,
+  "id": "project-glyphsmith-icons",
+  "name": "GlyphSmith Icons",
+  "activePageId": "icon-cube",
+  "projectPrompt": "Official GlyphSmith icon set. Keep icons simple, geometric, SVG-native, and suitable for 24px outline rendering.",
+  "settings": {
+    "defaultCanvas": {
+      "width": 24,
+      "height": 24
+    }
+  },
+  "pages": [
+    {
+      "id": "icon-cube",
+      "name": "Cube",
+      "document": {
+        "id": "document-icon-cube",
+        "name": "Cube",
+        "width": 24,
+        "height": 24,
+        "background": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "root": {
+          "id": "root",
+          "type": "group",
+          "name": "Root",
+          "children": [
+            {
+              "id": "cube-top",
+              "type": "path",
+              "name": "Top Face",
+              "start": {
+                "x": 12,
+                "y": 2.75
+              },
+              "closed": true,
+              "segments": [
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 3.75,
+                    "y": 7.75
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 12,
+                    "y": 12.75
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 20.25,
+                    "y": 7.75
+                  }
+                }
+              ],
+              "style": {
+                "fill": "none",
+                "stroke": "#111827",
+                "strokeWidth": 1.5,
+                "strokeLinecap": "round",
+                "strokeLinejoin": "round"
+              }
+            },
+            {
+              "id": "cube-left",
+              "type": "path",
+              "name": "Left Face",
+              "start": {
+                "x": 3.75,
+                "y": 7.75
+              },
+              "closed": true,
+              "segments": [
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 3.75,
+                    "y": 16.25
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 12,
+                    "y": 21.25
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 12,
+                    "y": 12.75
+                  }
+                }
+              ],
+              "style": {
+                "fill": "none",
+                "stroke": "#111827",
+                "strokeWidth": 1.5,
+                "strokeLinecap": "round",
+                "strokeLinejoin": "round"
+              }
+            },
+            {
+              "id": "cube-right",
+              "type": "path",
+              "name": "Right Face",
+              "start": {
+                "x": 20.25,
+                "y": 7.75
+              },
+              "closed": true,
+              "segments": [
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 20.25,
+                    "y": 16.25
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 12,
+                    "y": 21.25
+                  }
+                },
+                {
+                  "type": "line",
+                  "to": {
+                    "x": 12,
+                    "y": 12.75
+                  }
+                }
+              ],
+              "style": {
+                "fill": "none",
+                "stroke": "#111827",
+                "strokeWidth": 1.5,
+                "strokeLinecap": "round",
+                "strokeLinejoin": "round"
+              }
+            }
+          ]
+        },
+        "comments": []
+      }
+    },
+    {
+      "id": "icon-pen-curve",
+      "name": "Pen Curve",
+      "document": {
+        "id": "document-icon-pen-curve",
+        "name": "Pen Curve",
+        "width": 24,
+        "height": 24,
+        "background": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "root": {
+          "id": "root",
+          "type": "group",
+          "name": "Root",
+          "children": [
+            {
+              "id": "pen-curve-line",
+              "type": "path",
+              "name": "Curve",
+              "start": {
+                "x": 4,
+                "y": 15
+              },
+              "closed": false,
+              "segments": [
+                {
+                  "type": "cubic",
+                  "control1": {
+                    "x": 7,
+                    "y": 5
+                  },
+                  "control2": {
+                    "x": 17,
+                    "y": 19
+                  },
+                  "to": {
+                    "x": 20,
+                    "y": 9
+                  }
+                }
+              ],
+              "style": {
+                "fill": "none",
+                "stroke": "#111827",
+                "strokeWidth": 1.5,
+                "strokeLinecap": "round",
+                "strokeLinejoin": "round"
+              }
+            },
+            {
+              "id": "pen-curve-start",
+              "type": "circle",
+              "name": "Start Anchor",
+              "cx": 4,
+              "cy": 15,
+              "r": 1.5,
+              "style": {
+                "fill": "#ffffff",
+                "stroke": "#111827",
+                "strokeWidth": 1.25
+              }
+            },
+            {
+              "id": "pen-curve-end",
+              "type": "circle",
+              "name": "End Anchor",
+              "cx": 20,
+              "cy": 9,
+              "r": 1.5,
+              "style": {
+                "fill": "#ffffff",
+                "stroke": "#111827",
+                "strokeWidth": 1.25
+              }
+            }
+          ]
+        },
+        "comments": []
+      }
+    },
+    {
+      "id": "icon-text",
+      "name": "Text",
+      "document": {
+        "id": "document-icon-text",
+        "name": "Text",
+        "width": 24,
+        "height": 24,
+        "background": {
+          "type": "solid",
+          "color": "#ffffff"
+        },
+        "root": {
+          "id": "root",
+          "type": "group",
+          "name": "Root",
+          "children": [
+            {
+              "id": "text-baseline",
+              "type": "line",
+              "name": "Baseline",
+              "x1": 4,
+              "y1": 19,
+              "x2": 20,
+              "y2": 19,
+              "style": {
+                "fill": "none",
+                "stroke": "#111827",
+                "strokeWidth": 1.5,
+                "strokeLinecap": "round"
+              }
+            },
+            {
+              "id": "text-glyph",
+              "type": "text",
+              "name": "Glyph",
+              "x": 12,
+              "y": 16,
+              "text": "G",
+              "fill": "#111827",
+              "fontFamily": "Inter, system-ui, sans-serif",
+              "fontSize": 14,
+              "fontWeight": "700",
+              "textAnchor": "middle"
+            }
+          ]
+        },
+        "comments": []
+      }
+    }
+  ],
+  "createdAt": "2026-01-01T00:00:00.000Z",
+  "updatedAt": "2026-01-01T00:00:00.000Z"
+}
