@@ -104,6 +104,10 @@ button {
 	font-variant-numeric: tabular-nums;
 }
 
+.export-menu {
+	position: relative;
+}
+
 .history-controls button,
 .topbar-status button {
 	min-height: 28px;
@@ -119,6 +123,171 @@ button {
 .topbar-status button:disabled {
 	cursor: default;
 	opacity: 0.4;
+}
+
+.export-popover {
+	position: absolute;
+	top: calc(100% + 8px);
+	right: 0;
+	z-index: 40;
+	width: 340px;
+	border: 1px solid var(--color-gs-border);
+	border-radius: 8px;
+	background: var(--color-gs-panel);
+	box-shadow: 0 18px 48px rgba(0, 0, 0, 0.35);
+	padding: 12px;
+	color: var(--color-gs-text);
+	text-align: left;
+}
+
+.export-popover-header,
+.export-popover-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.export-popover-header {
+	margin-bottom: 10px;
+}
+
+.export-popover-header h2 {
+	margin: 0;
+	color: var(--color-gs-text-muted);
+	font-size: 12px;
+	font-weight: 700;
+	letter-spacing: 0;
+	text-transform: uppercase;
+}
+
+.topbar-status .export-popover-header button {
+	width: 24px;
+	min-height: 24px;
+	padding: 0;
+	color: var(--color-gs-text-subtle);
+}
+
+.export-mode-list,
+.export-page-list {
+	display: grid;
+}
+
+.export-mode-list {
+	overflow: hidden;
+	border: 1px solid var(--color-gs-border-muted);
+	border-radius: 6px;
+	background: var(--color-gs-control);
+}
+
+.export-mode-list label {
+	display: grid;
+	grid-template-columns: auto minmax(0, 1fr);
+	align-items: center;
+	gap: 8px;
+	border-bottom: 1px solid var(--color-gs-border-muted);
+	padding: 8px 9px;
+	color: var(--color-gs-text);
+	font-size: 12px;
+}
+
+.export-mode-list label:last-child {
+	border-bottom: 0;
+}
+
+.export-mode-list label:has(input:checked) {
+	background: rgba(79, 142, 247, 0.12);
+	color: var(--color-gs-text-inverse);
+}
+
+.export-page-list {
+	max-height: min(460px, calc(100vh - 260px));
+	overflow: auto;
+	margin-top: 8px;
+	border-top: 1px solid var(--color-gs-border-muted);
+	padding-top: 8px;
+	gap: 3px;
+}
+
+.export-page-list label {
+	display: grid;
+	grid-template-columns: auto 44px minmax(0, 1fr);
+	align-items: center;
+	gap: 9px;
+	border-radius: 5px;
+	padding: 6px 7px;
+	color: var(--color-gs-text);
+	font-size: 12px;
+}
+
+.export-page-list label:hover {
+	background: var(--color-gs-control);
+}
+
+.export-page-list label.export-page-select-all {
+	position: sticky;
+	top: 0;
+	z-index: 1;
+	grid-template-columns: auto minmax(0, 1fr);
+	margin-bottom: 4px;
+	border-bottom: 1px solid var(--color-gs-border-muted);
+	border-radius: 0;
+	background: var(--color-gs-panel);
+	padding: 7px;
+}
+
+.export-page-list label.export-page-select-all:hover {
+	background: var(--color-gs-control);
+}
+
+.export-mode-list input,
+.export-page-list input {
+	width: 14px;
+	height: 14px;
+	margin: 0;
+}
+
+.export-page-thumb {
+	width: 44px;
+	height: 34px;
+	overflow: hidden;
+	border: 1px solid var(--color-gs-border-muted);
+	border-radius: 5px;
+	background: var(--color-gs-workbench);
+}
+
+.export-page-thumb .page-thumb {
+	width: 100%;
+	height: 100%;
+	border-radius: 0;
+}
+
+.export-page-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.export-popover-footer {
+	margin-top: 12px;
+	padding-top: 10px;
+	border-top: 1px solid var(--color-gs-border-muted);
+}
+
+.export-popover-footer span {
+	color: var(--color-gs-text-subtle);
+	font-size: 11px;
+}
+
+.topbar-status .export-popover-footer button {
+	min-height: 28px;
+	padding: 0 10px;
+}
+
+.topbar-status .export-popover-footer button.primary {
+	border-color: var(--color-gs-primary-hover);
+	background: var(--color-gs-primary);
+	color: var(--color-gs-text-inverse);
 }
 
 .workspace {

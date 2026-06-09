@@ -40,6 +40,7 @@
 		"@glyphsmith/ast": "workspace:*",
 		"@glyphsmith/editor": "workspace:*",
 		"@glyphsmith/kernel": "workspace:*",
-		"@glyphsmith/svg": "workspace:*"
+		"@glyphsmith/svg": "workspace:*",
+		"fflate": "^0.8.3"
 	}
 }

@@ -44,6 +44,8 @@
 	import { exportToSvg } from '@glyphsmith/svg';
 	import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/svelte';
 	import { isSortable } from '@dnd-kit/svelte/sortable';
+	import { strToU8, zipSync } from 'fflate';
+	import ExportSvgPopover from '$lib/ExportSvgPopover.svelte';
 	import PageThumbnail from '$lib/PageThumbnail.svelte';
 	import LayerRow from './LayerRow.svelte';
 	import { onMount, tick } from 'svelte';
@@ -83,6 +85,7 @@
 	let closingHostSocket = false;
 	let hasFitInitialViewport = false;
 	let settingsOpen = $state(false);
+	let svgExportOpen = $state(false);
 	let layerDragStartProject: GlyphSmithProject | undefined;
 	let pageContextMenu = $state<{ pageId: string; x: number; y: number } | undefined>();
 	let pageTooltip = $state<{ text: string; x: number; y: number } | undefined>();
@@ -116,6 +119,16 @@
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
 	const layerNodes = $derived([...geometryDocument.root.children].reverse());
+	const svgExportPages = $derived(
+		project.pages.map((page, index) => ({
+			document: page.document,
+			id: page.id,
+			name: page.name || `Page ${index + 1}`,
+			width: page.document.width,
+			height: page.document.height,
+			active: page.id === project.activePageId
+		}))
+	);
 	const pageContextMenuPage = $derived(
 		pageContextMenu ? project.pages.find((page) => page.id === pageContextMenu?.pageId) : undefined
 	);
@@ -1379,16 +1392,42 @@
 		return /^#[\da-f]{6}$/i.test(value ?? '') ? (value as string) : fallback;
 	}
 
-	function downloadProjectSvgs() {
-		for (const page of project.pages) {
-			const svg = exportToSvg(page.document);
-			const filename = `${fileSafeName(project.name || 'glyphsmith')}-${fileSafeName(page.name || page.id)}.svg`;
-			downloadTextFile(svg, filename, 'image/svg+xml');
+	function exportSvgPages(pageIds: string[]) {
+		const selectedPageIds = new Set(pageIds);
+		const pages = project.pages.filter((page) => selectedPageIds.has(page.id));
+
+		if (pages.length === 0) {
+			return;
 		}
+
+		if (pages.length === 1) {
+			const page = pages[0]!;
+			downloadTextFile(exportToSvg(page.document), `${fileSafeName(page.name || page.id)}.svg`, 'image/svg+xml');
+			svgExportOpen = false;
+			return;
+		}
+
+		const projectSlug = fileSafeName(project.name || 'glyphsmith-project');
+		const usedNames = new Map<string, number>();
+		const entries: Record<string, Uint8Array> = {};
+
+		pages.forEach((page, index) => {
+			const basename = uniqueExportFilename(
+				`${String(index + 1).padStart(2, '0')}-${fileSafeName(page.name || page.id)}`,
+				usedNames
+			);
+			entries[`${projectSlug}/${basename}.svg`] = strToU8(exportToSvg(page.document));
+		});
+
+		downloadBlob(new Blob([zipSync(entries)], { type: 'application/zip' }), `${projectSlug}-svg.zip`);
+		svgExportOpen = false;
 	}
 
 	function downloadTextFile(content: string, filename: string, type: string) {
-		const blob = new Blob([content], { type });
+		downloadBlob(new Blob([content], { type }), filename);
+	}
+
+	function downloadBlob(blob: Blob, filename: string) {
 		const url = URL.createObjectURL(blob);
 		const link = document.createElement('a');
 
@@ -1409,6 +1448,13 @@
 
 	function fileSafeName(value: string) {
 		return value.trim().replace(/[^a-z0-9-_]+/gi, '-').replace(/^-+|-+$/g, '') || 'glyphsmith';
+	}
+
+	function uniqueExportFilename(basename: string, usedNames: Map<string, number>) {
+		const count = usedNames.get(basename) ?? 0;
+		usedNames.set(basename, count + 1);
+
+		return count === 0 ? basename : `${basename}-${count + 1}`;
 	}
 
 	function connectHostWebSocket() {
@@ -2134,7 +2180,19 @@
 		</div>
 
 		<div class="topbar-status">
-			<button type="button" onclick={downloadProjectSvgs}>Export SVG</button>
+			<div class="export-menu">
+				<button type="button" aria-expanded={svgExportOpen} onclick={() => (svgExportOpen = !svgExportOpen)}>
+					Export SVG
+				</button>
+				{#if svgExportOpen}
+					<ExportSvgPopover
+						activePageId={project.activePageId}
+						pages={svgExportPages}
+						onClose={() => (svgExportOpen = false)}
+						onExport={exportSvgPages}
+					/>
+				{/if}
+			</div>
 			<button type="button" onclick={downloadProject}>Export Project</button>
 			<button type="button" onclick={openProjectSettings}>Settings</button>
 		</div>
