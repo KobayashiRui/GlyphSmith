@@ -110,6 +110,9 @@
 		alphaDark: '#cfd8df'
 	} as const;
 
+	const strokeLinecapOptions = ['butt', 'round', 'square'] as const;
+	const strokeLinejoinOptions = ['miter', 'round', 'bevel'] as const;
+
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
 	const layerNodes = $derived([...geometryDocument.root.children].reverse());
@@ -1247,10 +1250,13 @@
 			return;
 		}
 
+		const trimmedValue = rawValue.trim();
 		const value =
-			field === 'strokeWidth' || field === 'opacity'
+			field === 'strokeMiterlimit' || field === 'strokeDashoffset'
+				? trimmedValue === '' ? undefined : Number(trimmedValue)
+				: field === 'strokeWidth' || field === 'opacity'
 				? Number(rawValue)
-				: rawValue.trim() || undefined;
+				: trimmedValue || undefined;
 
 		if (typeof value === 'number' && !Number.isFinite(value)) {
 			return;
@@ -2367,7 +2373,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.x}
-								onchange={(event) => updateSelectedGeometryNumber('x', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('x', event.currentTarget.value)}
 							/>
 
 							<label for="rect-y">Y</label>
@@ -2377,7 +2383,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.y}
-								onchange={(event) => updateSelectedGeometryNumber('y', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('y', event.currentTarget.value)}
 							/>
 
 							<label for="rect-width">Width</label>
@@ -2388,7 +2394,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.width}
-								onchange={(event) => updateSelectedGeometryNumber('width', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('width', event.currentTarget.value)}
 							/>
 
 							<label for="rect-height">Height</label>
@@ -2399,7 +2405,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.height}
-								onchange={(event) => updateSelectedGeometryNumber('height', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('height', event.currentTarget.value)}
 							/>
 
 							<label for="rect-rx">Corner X</label>
@@ -2412,7 +2418,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.rx ?? ''}
-								onchange={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
 							/>
 
 							<label for="rect-ry">Corner Y</label>
@@ -2425,7 +2431,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.ry ?? ''}
-								onchange={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
 							/>
 						{:else if selectedNode.type === 'ellipse'}
 							<label for="ellipse-cx">Center X</label>
@@ -2435,7 +2441,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.cx}
-								onchange={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
 							/>
 
 							<label for="ellipse-cy">Center Y</label>
@@ -2445,7 +2451,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.cy}
-								onchange={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
 							/>
 
 							<label for="ellipse-rx">Radius X</label>
@@ -2456,7 +2462,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.rx}
-								onchange={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('rx', event.currentTarget.value)}
 							/>
 
 							<label for="ellipse-ry">Radius Y</label>
@@ -2467,7 +2473,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.ry}
-								onchange={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('ry', event.currentTarget.value)}
 							/>
 						{:else if selectedNode.type === 'circle'}
 							<label for="circle-cx">Center X</label>
@@ -2477,7 +2483,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.cx}
-								onchange={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('cx', event.currentTarget.value)}
 							/>
 
 							<label for="circle-cy">Center Y</label>
@@ -2487,7 +2493,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.cy}
-								onchange={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('cy', event.currentTarget.value)}
 							/>
 
 							<label for="circle-r">Radius</label>
@@ -2498,7 +2504,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.r}
-								onchange={(event) => updateSelectedGeometryNumber('r', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('r', event.currentTarget.value)}
 							/>
 						{:else if selectedNode.type === 'line'}
 							<label for="line-x1">X1</label>
@@ -2508,7 +2514,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.x1}
-								onchange={(event) => updateSelectedGeometryNumber('x1', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('x1', event.currentTarget.value)}
 							/>
 
 							<label for="line-y1">Y1</label>
@@ -2518,7 +2524,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.y1}
-								onchange={(event) => updateSelectedGeometryNumber('y1', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('y1', event.currentTarget.value)}
 							/>
 
 							<label for="line-x2">X2</label>
@@ -2528,7 +2534,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.x2}
-								onchange={(event) => updateSelectedGeometryNumber('x2', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('x2', event.currentTarget.value)}
 							/>
 
 							<label for="line-y2">Y2</label>
@@ -2538,7 +2544,7 @@
 								step="1"
 								type="number"
 								value={selectedNode.y2}
-								onchange={(event) => updateSelectedGeometryNumber('y2', event.currentTarget.value)}
+								oninput={(event) => updateSelectedGeometryNumber('y2', event.currentTarget.value)}
 							/>
 						{:else}
 							<div class="empty-row">N/A</div>
@@ -2572,7 +2578,7 @@
 								id="fill"
 								class="text-field"
 								value={selectedNode.style?.fill ?? 'none'}
-								onchange={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
+								oninput={(event) => updateSelectedStyle('fill', event.currentTarget.value)}
 							/>
 							<button class="inline-button" type="button" onclick={() => updateSelectedStyle('fill', 'none')}>None</button>
 						</div>
@@ -2590,7 +2596,7 @@
 								id="stroke"
 								class="text-field"
 								value={selectedNode.style?.stroke ?? '#111827'}
-								onchange={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
+								oninput={(event) => updateSelectedStyle('stroke', event.currentTarget.value)}
 							/>
 						</div>
 
@@ -2602,7 +2608,65 @@
 							step="0.5"
 							type="number"
 							value={selectedNode.style?.strokeWidth ?? 2}
-							onchange={(event) => updateSelectedStyle('strokeWidth', event.currentTarget.value)}
+							oninput={(event) => updateSelectedStyle('strokeWidth', event.currentTarget.value)}
+						/>
+
+						<label for="stroke-linecap">Cap</label>
+						<div class="line-style-options" id="stroke-linecap">
+							{#each strokeLinecapOptions as linecap}
+								<button
+									class:active={(selectedNode.style?.strokeLinecap ?? 'butt') === linecap}
+									type="button"
+									onclick={() => updateSelectedStyle('strokeLinecap', linecap)}
+								>
+									{linecap}
+								</button>
+							{/each}
+						</div>
+
+						<label for="stroke-linejoin">Join</label>
+						<div class="line-style-options" id="stroke-linejoin">
+							{#each strokeLinejoinOptions as linejoin}
+								<button
+									class:active={(selectedNode.style?.strokeLinejoin ?? 'miter') === linejoin}
+									type="button"
+									onclick={() => updateSelectedStyle('strokeLinejoin', linejoin)}
+								>
+									{linejoin}
+								</button>
+							{/each}
+						</div>
+
+						{#if (selectedNode.style?.strokeLinejoin ?? 'miter') === 'miter'}
+							<label for="stroke-miterlimit">Miter</label>
+							<input
+								id="stroke-miterlimit"
+								class="text-field"
+								min="0"
+								step="0.5"
+								type="number"
+								value={selectedNode.style?.strokeMiterlimit ?? 4}
+								oninput={(event) => updateSelectedStyle('strokeMiterlimit', event.currentTarget.value)}
+							/>
+						{/if}
+
+						<label for="stroke-dasharray">Dash</label>
+						<input
+							id="stroke-dasharray"
+							class="text-field"
+							placeholder="8 4"
+							value={selectedNode.style?.strokeDasharray ?? ''}
+							oninput={(event) => updateSelectedStyle('strokeDasharray', event.currentTarget.value)}
+						/>
+
+						<label for="stroke-dashoffset">Dash Offset</label>
+						<input
+							id="stroke-dashoffset"
+							class="text-field"
+							step="1"
+							type="number"
+							value={selectedNode.style?.strokeDashoffset ?? 0}
+							oninput={(event) => updateSelectedStyle('strokeDashoffset', event.currentTarget.value)}
 						/>
 
 						<label for="opacity">Opacity</label>
@@ -2614,7 +2678,7 @@
 							step="0.05"
 							type="number"
 							value={selectedNode.style?.opacity ?? 1}
-							onchange={(event) => updateSelectedStyle('opacity', event.currentTarget.value)}
+							oninput={(event) => updateSelectedStyle('opacity', event.currentTarget.value)}
 						/>
 					</div>
 					<button class="secondary-button danger" type="button" onclick={deleteSelection}>Delete Selection</button>

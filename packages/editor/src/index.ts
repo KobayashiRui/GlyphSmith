@@ -820,7 +820,9 @@ function applyStyle(context: CanvasRenderingContext2D, style: NodeStyle | undefi
   context.lineWidth = style?.strokeWidth ?? 2;
   context.lineCap = canvasLineCap(style?.strokeLinecap);
   context.lineJoin = canvasLineJoin(style?.strokeLinejoin);
-  context.setLineDash([]);
+  context.miterLimit = style?.strokeMiterlimit ?? 4;
+  context.setLineDash(parseStrokeDasharray(style?.strokeDasharray));
+  context.lineDashOffset = style?.strokeDashoffset ?? 0;
   context.globalAlpha = style?.opacity ?? 1;
 }
 
@@ -838,6 +840,21 @@ function canvasLineJoin(value: NodeStyle["strokeLinejoin"] | undefined): CanvasL
   }
 
   return "miter";
+}
+
+function parseStrokeDasharray(value: string | undefined): number[] {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue || trimmedValue === "none") {
+    return [];
+  }
+
+  const dash = trimmedValue
+    .split(/[\s,]+/)
+    .map((part) => Number(part))
+    .filter((part) => Number.isFinite(part) && part >= 0);
+
+  return dash.some((part) => part > 0) ? dash : [];
 }
 
 function paintCurrentPath(context: CanvasRenderingContext2D, style: NodeStyle | undefined): void {

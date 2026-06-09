@@ -770,6 +770,40 @@ canvas.panning {
 	grid-template-columns: 34px minmax(0, 1fr);
 }
 
+.line-style-options {
+	display: grid;
+	grid-template-columns: repeat(3, minmax(0, 1fr));
+	overflow: hidden;
+	border: 1px solid var(--color-gs-border);
+	border-radius: 6px;
+	background: var(--color-gs-control);
+}
+
+.line-style-options button {
+	min-width: 0;
+	min-height: 30px;
+	border: 0;
+	border-right: 1px solid var(--color-gs-border);
+	background: transparent;
+	color: var(--color-gs-text-muted);
+	font-size: 11px;
+	text-transform: capitalize;
+}
+
+.line-style-options button:last-child {
+	border-right: 0;
+}
+
+.line-style-options button:hover {
+	background: var(--color-gs-control-hover);
+	color: var(--color-gs-text);
+}
+
+.line-style-options button.active {
+	background: var(--color-gs-primary);
+	color: var(--color-gs-text-inverse);
+}
+
 .color-field {
 	width: 34px;
 	height: 34px;

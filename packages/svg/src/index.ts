@@ -80,6 +80,9 @@ function renderStyle(style: NodeStyle | undefined): string {
   const strokeWidth = style?.strokeWidth ?? 2;
   const strokeLinecap = style?.strokeLinecap;
   const strokeLinejoin = style?.strokeLinejoin;
+  const strokeMiterlimit = style?.strokeMiterlimit;
+  const strokeDasharray = style?.strokeDasharray;
+  const strokeDashoffset = style?.strokeDashoffset;
   const opacity = style?.opacity;
 
   return [
@@ -88,6 +91,9 @@ function renderStyle(style: NodeStyle | undefined): string {
     ` stroke-width="${formatNumber(strokeWidth)}"`,
     strokeLinecap === undefined ? "" : ` stroke-linecap="${escapeAttribute(strokeLinecap)}"`,
     strokeLinejoin === undefined ? "" : ` stroke-linejoin="${escapeAttribute(strokeLinejoin)}"`,
+    strokeMiterlimit === undefined ? "" : ` stroke-miterlimit="${formatNumber(strokeMiterlimit)}"`,
+    strokeDasharray === undefined ? "" : ` stroke-dasharray="${escapeAttribute(strokeDasharray)}"`,
+    strokeDashoffset === undefined ? "" : ` stroke-dashoffset="${formatNumber(strokeDashoffset)}"`,
     opacity === undefined ? "" : ` opacity="${formatNumber(opacity)}"`
   ].join("");
 }

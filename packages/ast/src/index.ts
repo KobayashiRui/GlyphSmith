@@ -24,6 +24,9 @@ export type NodeStyle = {
   strokeWidth?: number;
   strokeLinecap?: StrokeLineCap;
   strokeLinejoin?: StrokeLineJoin;
+  strokeMiterlimit?: number;
+  strokeDasharray?: string;
+  strokeDashoffset?: number;
   opacity?: number;
 };
 
