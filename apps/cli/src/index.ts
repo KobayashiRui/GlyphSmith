@@ -6,6 +6,7 @@ import { homedir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { mcpTools } from "@glyphsmith/mcp";
 import { ProjectStore } from "./project-store.js";
 import { startHostServer } from "./server.js";
 
@@ -457,12 +458,24 @@ async function installCodexMcpConfig(url: string): Promise<string> {
   if (commandHelpIncludes("codex", ["mcp", "add", "--help"], "--url")) {
     commandOutputIgnored("codex", ["mcp", "remove", "glyphsmith"]);
     commandOutput("codex", ["mcp", "add", "glyphsmith", "--url", url]);
-    return "Codex CLI user scope";
   }
 
   const path = resolve(process.env.CODEX_HOME || resolve(homedir(), ".codex"), "config.toml");
   const content = await readOptionalTextFile(path);
-  const nextContent = upsertTomlTable(content, "mcp_servers.glyphsmith", `url = ${JSON.stringify(url)}`);
+  let nextContent = upsertTomlTable(
+    content,
+    "mcp_servers.glyphsmith",
+    `enabled = true\nurl = ${JSON.stringify(url)}`
+  );
+
+  for (const tool of mcpTools()) {
+    nextContent = upsertTomlTable(
+      nextContent,
+      `mcp_servers.glyphsmith.tools.${tool.name}`,
+      `approval_mode = "approve"`
+    );
+  }
+
   await writeTextFile(path, nextContent);
   return path;
 }

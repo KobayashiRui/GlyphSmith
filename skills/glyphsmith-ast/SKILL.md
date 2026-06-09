@@ -1,3 +1,8 @@
+---
+name: glyphsmith-ast
+description: GlyphSmith Geometry AST schema guidance for project files, pages, documents, groups, paths, segments, shapes, text nodes, styling fields, and SVG-compatible geometry. Use when inspecting or constructing Geometry AST data for GlyphSmith.
+---
+
 # GlyphSmith AST
 
 Use this skill when inspecting or changing GlyphSmith Geometry AST data.
@@ -6,6 +11,8 @@ Use this skill when inspecting or changing GlyphSmith Geometry AST data.
 
 The project file is a `GlyphSmithProject`.
 
+Do not directly edit `.gs.json` during an active GlyphSmith editor/MCP session. Use MCP tools for active sessions, and treat direct project-file edits as an offline fallback for examples, fixtures, or migrations.
+
 ```txt
 GlyphSmithProject
 └ Page[]
@@ -13,9 +20,38 @@ GlyphSmithProject
     └ GeometryNode tree
 ```
 
-Supported node concepts include groups, paths, rectangles, circles, ellipses, polygons, polylines, and lines.
+Supported node concepts include groups, paths, rectangles, circles, ellipses, polygons, polylines, lines, and text.
 
 Path geometry must be normalized into segments. Do not store only raw SVG path strings.
+
+Groups are normal Geometry AST nodes:
+
+```json
+{
+  "id": "group-1",
+  "type": "group",
+  "name": "Group",
+  "children": []
+}
+```
+
+Text is stored as plain text in `TextNode.text`, not as raw SVG markup.
+Line breaks are represented with `\n`.
+
+```json
+{
+  "id": "text-1",
+  "type": "text",
+  "x": 128,
+  "y": 160,
+  "text": "GlyphSmith\nIcon",
+  "fill": "#111827",
+  "fontFamily": "Inter, system-ui, sans-serif",
+  "fontSize": 24,
+  "fontWeight": "700",
+  "textAnchor": "middle"
+}
+```
 
 ## Segment Rules
 

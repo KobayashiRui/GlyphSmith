@@ -167,9 +167,9 @@ npx glyphsmith
 Expected behavior:
 
 ```txt
-✓ UI running on http://127.0.0.1:6001
-✓ Host running on ws://127.0.0.1:6002/ws
-✓ MCP running on http://127.0.0.1:6002/mcp
+✓ UI running on http://127.0.0.1:6201
+✓ Host running on ws://127.0.0.1:6202/ws
+✓ MCP running on http://127.0.0.1:6202/mcp
 ```
 
 The initial release is CLI-first.
@@ -252,8 +252,8 @@ The CLI resolves examples from the repository/package root.
 MCP registration commands:
 
 ```bash
-glyphsmith mcp install codex --url http://127.0.0.1:6002/mcp
-glyphsmith mcp install claude --url http://127.0.0.1:6002/mcp
+glyphsmith mcp install codex --url http://127.0.0.1:6202/mcp
+glyphsmith mcp install claude --url http://127.0.0.1:6202/mcp
 ```
 
 When Claude Code CLI registration is unavailable, pass `--project <project-dir>` to write a project-local `.mcp.json`.
@@ -379,7 +379,9 @@ Exposed tools:
 
 Mutation tools should accept `revision` when possible and should support `dryRun` for edits that can be previewed.
 MCP mutations must write through the CLI ProjectStore so WebSocket clients receive project snapshot updates.
-When an active CLI host is running, agents should not edit `.gs.json` directly. Direct project file edits are acceptable only for offline workflows where no active editor/MCP host is available.
+Default agent behavior is to avoid direct `.gs.json` edits.
+When an active CLI host or MCP server is running, agents must not edit `.gs.json` directly. Use MCP tools so the editor, revision, autosave, and WebSocket sync stay consistent.
+Direct project file edits are fallback-only for offline workflows where no active editor/MCP host is available, such as examples, fixtures, or migrations.
 
 AI agents should interact through these APIs.
 

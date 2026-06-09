@@ -1,3 +1,8 @@
+---
+name: glyphsmith-mcp
+description: GlyphSmith MCP workflow guidance for active editor sessions, local host endpoints, resources, tools, page/document reads, patch application, selection-aware edits, SVG export, and project save behavior. Use when a running GlyphSmith CLI host or MCP endpoint is available.
+---
+
 # GlyphSmith MCP
 
 Use this skill when an active GlyphSmith editor session exposes a local MCP endpoint.
@@ -13,7 +18,8 @@ Use this skill when an active GlyphSmith editor session exposes a local MCP endp
 
 * Do not regenerate a whole SVG when a patch is enough.
 * Do not edit raw SVG strings for active editor changes.
-* Do not directly edit `.gs.json` while the GlyphSmith CLI host is active. Use MCP tools so project revisions and WebSocket clients stay synchronized.
+* Treat `.gs.json` as an implementation detail while the GlyphSmith CLI host is active.
+* Do not directly edit `.gs.json` during active sessions. Use MCP tools so project revisions, autosave, and WebSocket clients stay synchronized.
 * Prefer page-scoped operations.
 * Keep comments as first-class instructions for agents.
 * Before drawing or editing generated artwork, read `glyphsmith://project` or call `project_get` and follow `project.projectPrompt` when present.
@@ -23,14 +29,14 @@ Use this skill when an active GlyphSmith editor session exposes a local MCP endp
 The CLI starts the editor UI and host server locally.
 
 ```txt
-Editor: http://127.0.0.1:6001
-Host:   ws://127.0.0.1:6002/ws
-MCP:    http://127.0.0.1:6002/mcp
+Editor: http://127.0.0.1:6201
+Host:   ws://127.0.0.1:6202/ws
+MCP:    http://127.0.0.1:6202/mcp
 ```
 
 If the default port is unavailable, use the actual MCP URL printed by the CLI.
 
-For monorepo development with `pnpm run dev`, the default ports are:
+For monorepo development with `pnpm run dev`, the same default ports are used:
 
 ```txt
 Editor: http://localhost:6201
@@ -38,11 +44,14 @@ Host:   ws://localhost:6202/ws
 MCP:    http://localhost:6202/mcp
 ```
 
+`pnpm run dev` opens `examples/playground.gs.json`.
+`pnpm run dev:icons` opens `examples/glyphsmith.gs.json`.
+
 Register the endpoint with local agents when needed.
 
 ```bash
-glyphsmith mcp install codex --url http://127.0.0.1:6002/mcp
-glyphsmith mcp install claude --url http://127.0.0.1:6002/mcp
+glyphsmith mcp install codex --url http://127.0.0.1:6202/mcp
+glyphsmith mcp install claude --url http://127.0.0.1:6202/mcp
 ```
 
 ## Resources
@@ -89,6 +98,7 @@ Use `patch_apply` with `dryRun: true` before risky geometry changes.
 Use `patches_apply` when drawing multiple shapes in one update.
 Use `node_insert`, `node_update`, `node_delete`, and `node_move` for simple create/edit/delete/move operations.
 Use `path_create` and `path_segment_*` for path drawing or segment-level curve edits.
+Use `node_insert` / `node_update` for `text` and `group` nodes as normal Geometry AST nodes.
 Pass `revision` when mutating if the current revision is known.
 `glyphsmith://selection` reflects the current editor selection when the web editor is connected to the CLI host.
 

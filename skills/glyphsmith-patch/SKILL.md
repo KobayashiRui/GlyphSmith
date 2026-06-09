@@ -1,3 +1,8 @@
+---
+name: glyphsmith-patch
+description: GlyphSmith patch operation guidance for targeted Geometry AST edits, node insert/update/delete/move patterns, path segment edits, groups, text, and patch-based SVG-equivalent drawing. Use when generating patches instead of rewriting documents.
+---
+
 # GlyphSmith Patch
 
 Use this skill when creating patch operations for GlyphSmith Geometry AST.
@@ -5,6 +10,8 @@ Use this skill when creating patch operations for GlyphSmith Geometry AST.
 ## Patch Principles
 
 Prefer targeted patches.
+
+During an active GlyphSmith editor/MCP session, apply patches through MCP tools instead of directly editing `.gs.json`. Direct project-file edits are an offline fallback only.
 
 ```json
 {
@@ -149,6 +156,34 @@ Line:
     "stroke": "#f97316",
     "strokeWidth": 8
   }
+}
+```
+
+Text:
+
+```json
+{
+  "id": "label",
+  "type": "text",
+  "x": 256,
+  "y": 448,
+  "text": "GlyphSmith\nIcon",
+  "fill": "#111827",
+  "fontFamily": "Inter, system-ui, sans-serif",
+  "fontSize": 32,
+  "fontWeight": "700",
+  "textAnchor": "middle"
+}
+```
+
+Group:
+
+```json
+{
+  "id": "mark-group",
+  "type": "group",
+  "name": "Mark",
+  "children": []
 }
 ```
 
