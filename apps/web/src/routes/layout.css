@@ -310,6 +310,7 @@ button {
 
 .sidebar {
 	border-right: 1px solid var(--color-gs-border-muted);
+	overflow-y: auto;
 }
 
 .inspector {
@@ -451,15 +452,15 @@ button {
 	min-height: 0;
 	flex-direction: column;
 	gap: 4px;
-	overflow: auto;
+	overflow: visible;
 }
 
-.layer-list button,
+.layer-row,
 .empty-row {
 	display: flex;
 	min-height: 36px;
 	align-items: center;
-	justify-content: space-between;
+	justify-content: flex-start;
 	gap: 8px;
 	border: 1px solid var(--color-gs-border-muted);
 	border-radius: 6px;
@@ -470,30 +471,89 @@ button {
 	text-align: left;
 }
 
-.layer-list button {
+.layer-row {
 	cursor: grab;
+	position: relative;
+	margin-left: calc(var(--layer-depth) * 14px);
+	padding-left: 8px;
+	user-select: none;
+	width: calc(100% - var(--layer-depth) * 14px);
 }
 
-.layer-list button:active {
+.layer-row:active {
 	cursor: grabbing;
 }
 
-.layer-list button.selected {
+.layer-row.selected {
 	border-color: var(--color-gs-primary-hover);
 	background: var(--color-gs-primary-soft);
 	color: var(--color-gs-text-inverse);
 }
 
-.layer-list button.dragging {
+.layer-row.group-row {
+	font-weight: 600;
+}
+
+.layer-row.expanded-group {
+	border-color: var(--color-gs-border);
+	background: var(--color-gs-panel);
+}
+
+.layer-row.nested-row {
+	border-left: 2px solid var(--color-gs-primary);
+	background: var(--color-gs-control-hover);
+}
+
+.layer-row.nested-row::before {
+	position: absolute;
+	top: -5px;
+	bottom: -5px;
+	left: -9px;
+	width: 1px;
+	background: var(--color-gs-border-muted);
+	content: "";
+}
+
+.layer-row.nested-row.selected {
+	background: var(--color-gs-primary-soft);
+}
+
+.layer-row.dragging {
 	opacity: 0.48;
 }
 
-.layer-list button.drop-target {
+.layer-row.drop-target {
 	border-color: var(--color-gs-primary);
 	box-shadow: inset 0 2px 0 var(--color-gs-primary);
 }
 
+.layer-disclosure {
+	display: grid;
+	width: 18px;
+	height: 18px;
+	flex: 0 0 auto;
+	place-items: center;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font-size: 11px;
+}
+
+.layer-disclosure svg {
+	width: 14px;
+	height: 14px;
+}
+
+.layer-row span {
+	min-width: 0;
+	flex: 1 1 auto;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
 .layer-list code {
+	margin-left: auto;
 	color: var(--color-gs-text-subtle);
 	font-size: 11px;
 }
@@ -662,6 +722,10 @@ button {
 	padding: 6px;
 	box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
 	transform: translate(-50%, calc(-100% - 8px));
+}
+
+.layer-context-menu {
+	transform: none;
 }
 
 .page-context-title {

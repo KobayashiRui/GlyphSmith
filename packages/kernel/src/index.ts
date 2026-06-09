@@ -59,6 +59,129 @@ export function findNode(document: GeometryDocument, nodeId: string): GeometryNo
   return findNodeInTree(document.root, nodeId);
 }
 
+export function findParentNode(document: GeometryDocument, nodeId: string): GroupNode | undefined {
+  return findParentNodeInTree(document.root, nodeId);
+}
+
+export function reorderChildren(
+  document: GeometryDocument,
+  parentId: string,
+  sourceIndex: number,
+  targetIndex: number
+): GeometryDocument {
+  return {
+    ...document,
+    root: updateNode(document.root, parentId, (node) => {
+      if (node.type !== "group") {
+        return node;
+      }
+
+      const children = [...node.children];
+      const from = clamp(sourceIndex, 0, children.length - 1);
+      const to = clamp(targetIndex, 0, children.length - 1);
+
+      if (from === to) {
+        return node;
+      }
+
+      const [child] = children.splice(from, 1);
+
+      if (!child) {
+        return node;
+      }
+
+      children.splice(to, 0, child);
+
+      return {
+        ...node,
+        children
+      };
+    }) as GroupNode
+  };
+}
+
+export function groupNodes(
+  document: GeometryDocument,
+  nodeIds: string[],
+  groupId: string,
+  name = "Group"
+): GeometryDocument {
+  const uniqueNodeIds = [...new Set(nodeIds)];
+
+  if (uniqueNodeIds.length < 2) {
+    return document;
+  }
+
+  const parents = uniqueNodeIds.map((nodeId) => findParentNode(document, nodeId));
+  const parent = parents[0];
+
+  if (!parent || parents.some((candidate) => candidate?.id !== parent.id)) {
+    return document;
+  }
+
+  const selected = new Set(uniqueNodeIds);
+  const selectedChildren = parent.children.filter((child) => selected.has(child.id));
+
+  if (selectedChildren.length < 2) {
+    return document;
+  }
+
+  const insertionIndex = Math.max(
+    ...selectedChildren.map((child) => parent.children.findIndex((candidate) => candidate.id === child.id))
+  );
+  const nextChildren = parent.children.filter((child) => !selected.has(child.id));
+  const group: GroupNode = {
+    id: groupId,
+    name,
+    type: "group",
+    children: selectedChildren
+  };
+
+  nextChildren.splice(insertionIndex - (selectedChildren.length - 1), 0, group);
+
+  return {
+    ...document,
+    root: updateNode(document.root, parent.id, (node) =>
+      node.type === "group"
+        ? {
+            ...node,
+            children: nextChildren
+          }
+        : node
+    ) as GroupNode
+  };
+}
+
+export function ungroupNode(document: GeometryDocument, groupId: string): GeometryDocument {
+  const group = findNode(document, groupId);
+  const parent = findParentNode(document, groupId);
+
+  if (!parent || !group || group.type !== "group") {
+    return document;
+  }
+
+  const groupIndex = parent.children.findIndex((child) => child.id === groupId);
+
+  if (groupIndex < 0) {
+    return document;
+  }
+
+  const children = [...parent.children];
+  children.splice(groupIndex, 1, ...group.children);
+
+  return {
+    ...document,
+    root: updateNode(document.root, parent.id, (node) =>
+      node.type === "group"
+        ? {
+            ...node,
+            children
+          }
+        : node
+    ) as GroupNode
+  };
+}
+
 function insertNode(
   current: GeometryNode,
   parentId: string,
@@ -130,6 +253,26 @@ function findNodeInTree(current: GeometryNode, nodeId: string): GeometryNode | u
 
   for (const child of current.children) {
     const match = findNodeInTree(child, nodeId);
+
+    if (match) {
+      return match;
+    }
+  }
+
+  return undefined;
+}
+
+function findParentNodeInTree(current: GeometryNode, nodeId: string): GroupNode | undefined {
+  if (current.type !== "group") {
+    return undefined;
+  }
+
+  if (current.children.some((child) => child.id === nodeId)) {
+    return current;
+  }
+
+  for (const child of current.children) {
+    const match = findParentNodeInTree(child, nodeId);
 
     if (match) {
       return match;

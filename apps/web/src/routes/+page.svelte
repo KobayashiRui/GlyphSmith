@@ -40,14 +40,14 @@
 		type Tool,
 		type Viewport
 	} from '@glyphsmith/editor';
-	import { applyPatch, findNode } from '@glyphsmith/kernel';
+	import { applyPatch, findNode, findParentNode, groupNodes, reorderChildren, ungroupNode } from '@glyphsmith/kernel';
 	import { exportToSvg } from '@glyphsmith/svg';
 	import { DragDropProvider, type DragDropEventHandlers } from '@dnd-kit/svelte';
 	import { isSortable } from '@dnd-kit/svelte/sortable';
 	import { strToU8, zipSync } from 'fflate';
 	import ExportSvgPopover from '$lib/ExportSvgPopover.svelte';
 	import PageThumbnail from '$lib/PageThumbnail.svelte';
-	import LayerRow from './LayerRow.svelte';
+	import LayerRow, { type LayerItem } from './LayerRow.svelte';
 	import { onMount, tick } from 'svelte';
 	import type { PageData } from './$types';
 
@@ -86,7 +86,11 @@
 	let hasFitInitialViewport = false;
 	let settingsOpen = $state(false);
 	let svgExportOpen = $state(false);
+	let editingGroupId = $state<NodeId | undefined>();
+	let expandedGroupIds = $state<NodeId[]>([]);
 	let layerDragStartProject: GlyphSmithProject | undefined;
+	let layerDragNodeId = $state<NodeId | undefined>();
+	let layerContextMenu = $state<{ nodeId?: NodeId; x: number; y: number } | undefined>();
 	let pageContextMenu = $state<{ pageId: string; x: number; y: number } | undefined>();
 	let pageTooltip = $state<{ text: string; x: number; y: number } | undefined>();
 	let renamingPageId = $state<string | undefined>();
@@ -118,7 +122,8 @@
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
-	const layerNodes = $derived([...geometryDocument.root.children].reverse());
+	const layerItems = $derived(buildLayerItems(geometryDocument.root, expandedGroupIds));
+	const visibleLayerItems = $derived(layerItems.filter((item) => !isHiddenByLayerDrag(item)));
 	const svgExportPages = $derived(
 		project.pages.map((page, index) => ({
 			document: page.document,
@@ -131,6 +136,9 @@
 	);
 	const pageContextMenuPage = $derived(
 		pageContextMenu ? project.pages.find((page) => page.id === pageContextMenu?.pageId) : undefined
+	);
+	const layerContextMenuNode = $derived(
+		layerContextMenu?.nodeId ? findNode(geometryDocument, layerContextMenu.nodeId) : undefined
 	);
 	const selectedNode = $derived(
 		selectedNodeIds[0] ? findNode(geometryDocument, selectedNodeIds[0]) : undefined
@@ -149,6 +157,50 @@
 
 	function initialSaveStatusFromData(): 'idle' | 'saved' {
 		return data.projectFile ? 'saved' : 'idle';
+	}
+
+	function buildLayerItems(parent: Extract<GeometryNode, { type: 'group' }>, expandedIds: NodeId[], depth = 0): LayerItem[] {
+		const items: LayerItem[] = [];
+		const expanded = new Set(expandedIds);
+		const children = parent.children;
+
+		for (let uiIndex = 0; uiIndex < children.length; uiIndex += 1) {
+			const astIndex = children.length - 1 - uiIndex;
+			const node = children[astIndex];
+
+			if (!node) {
+				continue;
+			}
+
+			const expandable = node.type === 'group' && node.children.length > 0;
+			const isExpanded = expanded.has(node.id);
+
+			items.push({
+				astIndex,
+				depth,
+				expanded: isExpanded,
+				expandable,
+				node,
+				parentId: parent.id,
+				uiIndex
+			});
+
+			if (node.type === 'group' && isExpanded) {
+				items.push(...buildLayerItems(node, expandedIds, depth + 1));
+			}
+		}
+
+		return items;
+	}
+
+	function isHiddenByLayerDrag(item: LayerItem) {
+		if (!layerDragNodeId || item.node.id === layerDragNodeId) {
+			return false;
+		}
+
+		const dragNode = findNode(geometryDocument, layerDragNodeId);
+
+		return dragNode?.type === 'group' && isAncestorOf(layerDragNodeId, item.node.id);
 	}
 
 	$effect(() => {
@@ -216,6 +268,9 @@
 				editingHandle = undefined;
 				dragging = false;
 				finishPathDrawing();
+				if (editingGroupId) {
+					exitGroupEdit();
+				}
 			}
 
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
@@ -225,6 +280,16 @@
 					redo();
 				} else {
 					undo();
+				}
+			}
+
+			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'g') {
+				event.preventDefault();
+
+				if (event.shiftKey) {
+					ungroupSelection();
+				} else {
+					groupSelection();
 				}
 			}
 
@@ -244,6 +309,7 @@
 
 		const handleWindowClick = () => {
 			closePageContextMenu();
+			closeLayerContextMenu();
 		};
 
 		resize();
@@ -317,12 +383,18 @@
 			const hitNodeId = hitTest(geometryDocument, worldPoint, {
 				tolerance: 8 / viewport.zoom
 			});
+			const selectableNodeId = hitNodeId ? canvasSelectableNodeId(hitNodeId) : undefined;
 
-			selectedNodeIds = hitNodeId ? [hitNodeId] : [];
-			dragging = Boolean(hitNodeId);
+			if (selectableNodeId) {
+				selectNode(selectableNodeId, event.shiftKey || event.metaKey || event.ctrlKey);
+			} else if (!event.shiftKey && !event.metaKey && !event.ctrlKey) {
+				selectedNodeIds = [];
+			}
+
+			dragging = Boolean(selectableNodeId);
 			lastDragPoint = worldPoint;
 
-			if (hitNodeId) {
+			if (selectableNodeId) {
 				beginLiveEdit();
 			}
 
@@ -364,16 +436,18 @@
 		if (tool === 'select' && dragging && lastDragPoint) {
 			const dx = worldPoint.x - lastDragPoint.x;
 			const dy = worldPoint.y - lastDragPoint.y;
+			let nextDocument = geometryDocument;
 
-			for (const nodeId of selectedNodeIds) {
-				updateActiveDocument(applyPatch(geometryDocument, {
+			for (const nodeId of effectiveSelectedNodeIds()) {
+				nextDocument = applyPatch(nextDocument, {
 					op: 'move',
 					target: nodeId,
 					dx,
 					dy
-				}));
+				});
 			}
 
+			updateActiveDocument(nextDocument);
 			lastDragPoint = worldPoint;
 			return;
 		}
@@ -415,6 +489,22 @@
 	function handlePointerLeave() {
 		shapePreviewPoint = undefined;
 		snapTarget = undefined;
+	}
+
+	function handleCanvasDoubleClick(event: MouseEvent) {
+		if (tool !== 'select') {
+			return;
+		}
+
+		const hitNodeId = hitTest(geometryDocument, pointerToWorld(event), {
+			tolerance: 8 / viewport.zoom
+		});
+		const selectableNodeId = hitNodeId ? canvasSelectableNodeId(hitNodeId) : undefined;
+		const node = selectableNodeId ? findNode(geometryDocument, selectableNodeId) : undefined;
+
+		if (node?.type === 'group') {
+			editGroup(node.id);
+		}
 	}
 
 	function handleWheel(event: WheelEvent) {
@@ -824,7 +914,7 @@
 		return snap?.point ?? point;
 	}
 
-	function pointerToScreen(event: PointerEvent | WheelEvent): Point {
+	function pointerToScreen(event: MouseEvent | PointerEvent | WheelEvent): Point {
 		const rect = canvas.getBoundingClientRect();
 
 		return {
@@ -833,7 +923,7 @@
 		};
 	}
 
-	function pointerToWorld(event: PointerEvent): Point {
+	function pointerToWorld(event: MouseEvent | PointerEvent): Point {
 		return screenToWorld(pointerToScreen(event), viewport);
 	}
 
@@ -947,6 +1037,7 @@
 		project = previous;
 		cancelDraft();
 		selectedNodeIds = [];
+		editingGroupId = undefined;
 		markProjectChanged();
 	}
 
@@ -962,6 +1053,7 @@
 		project = next;
 		cancelDraft();
 		selectedNodeIds = [];
+		editingGroupId = undefined;
 		markProjectChanged();
 	}
 
@@ -974,7 +1066,7 @@
 		redoStack = [];
 		let nextDocument = geometryDocument;
 
-		for (const nodeId of selectedNodeIds) {
+		for (const nodeId of effectiveSelectedNodeIds()) {
 			nextDocument = applyPatch(nextDocument, {
 				op: 'delete',
 				target: nodeId
@@ -996,6 +1088,7 @@
 			activePageId: pageId
 		};
 		selectedNodeIds = [];
+		editingGroupId = undefined;
 		finishPathDrawing();
 		fitCanvasToActivePageAfterUpdate();
 		markProjectChanged();
@@ -1135,6 +1228,44 @@
 		pageTooltip = undefined;
 	}
 
+	function openLayerContextMenu(event: MouseEvent, nodeId?: NodeId) {
+		event.preventDefault();
+		event.stopPropagation();
+
+		if (nodeId && !selectedNodeIds.includes(nodeId)) {
+			selectedNodeIds = [nodeId];
+		}
+
+		layerContextMenu = {
+			nodeId,
+			x: event.clientX,
+			y: event.clientY
+		};
+	}
+
+	function closeLayerContextMenu() {
+		layerContextMenu = undefined;
+	}
+
+	function handleCanvasContextMenu(event: MouseEvent) {
+		event.preventDefault();
+
+		if (tool !== 'select') {
+			return;
+		}
+
+		const hitNodeId = hitTest(geometryDocument, pointerToWorld(event), {
+			tolerance: 8 / viewport.zoom
+		});
+		const selectableNodeId = hitNodeId ? canvasSelectableNodeId(hitNodeId) : undefined;
+
+		if (selectableNodeId && !selectedNodeIds.includes(selectableNodeId)) {
+			selectedNodeIds = [selectableNodeId];
+		}
+
+		openLayerContextMenu(event, selectableNodeId);
+	}
+
 	function startPageContextRename() {
 		if (!pageContextMenuPage) {
 			return;
@@ -1183,22 +1314,31 @@
 			return;
 		}
 
+		layerDragNodeId = String(event.operation.source.id);
 		layerDragStartProject = cloneProject(project);
 	}
 
 	function handleLayerSortOver(event: DragOverEvent) {
 		const { source, target } = event.operation;
 
-		if (!isSortable(source) || !isSortable(target) || source.index === target.index) {
+		if (!isSortable(source) || !isSortable(target) || source.id === target.id) {
 			return;
 		}
 
-		reorderRootLayer(source.index, target.index);
+		const sourceItem = visibleLayerItems.find((item) => item.node.id === source.id);
+		const targetItem = visibleLayerItems.find((item) => item.node.id === target.id);
+
+		if (!sourceItem || !targetItem || sourceItem.parentId !== targetItem.parentId) {
+			return;
+		}
+
+		reorderLayer(sourceItem, targetItem);
 	}
 
 	function handleLayerSortEnd(event: DragEndEvent) {
 		const startProject = layerDragStartProject;
 		layerDragStartProject = undefined;
+		layerDragNodeId = undefined;
 
 		if (!startProject) {
 			return;
@@ -1218,34 +1358,150 @@
 		redoStack = [];
 	}
 
-	function reorderRootLayer(sourceUiIndex: number, targetUiIndex: number) {
-		const children = [...geometryDocument.root.children];
-		const sourceIndex = layerUiIndexToAstIndex(sourceUiIndex, children.length);
-		const targetIndex = layerUiIndexToAstIndex(targetUiIndex, children.length);
-
-		if (sourceIndex < 0 || targetIndex < 0 || sourceIndex === targetIndex) {
+	function reorderLayer(sourceItem: LayerItem, targetItem: LayerItem) {
+		if (sourceItem.parentId !== targetItem.parentId || sourceItem.astIndex === targetItem.astIndex) {
 			return;
 		}
 
-		const [sourceNode] = children.splice(sourceIndex, 1);
-
-		if (!sourceNode) {
-			return;
-		}
-
-		children.splice(targetIndex, 0, sourceNode);
-
-		updateActiveDocument({
-			...geometryDocument,
-			root: {
-				...geometryDocument.root,
-				children
-			}
-		});
+		updateActiveDocument(reorderChildren(geometryDocument, sourceItem.parentId, sourceItem.astIndex, targetItem.astIndex));
 	}
 
-	function layerUiIndexToAstIndex(index: number, length: number) {
-		return length - 1 - index;
+	function selectNode(nodeId: NodeId, additive = false) {
+		if (!additive) {
+			selectedNodeIds = [nodeId];
+			return;
+		}
+
+		selectedNodeIds = selectedNodeIds.includes(nodeId)
+			? selectedNodeIds.filter((selectedNodeId) => selectedNodeId !== nodeId)
+			: [...selectedNodeIds, nodeId];
+	}
+
+	function toggleGroupExpanded(nodeId: NodeId) {
+		expandedGroupIds = expandedGroupIds.includes(nodeId)
+			? expandedGroupIds.filter((expandedGroupId) => expandedGroupId !== nodeId)
+			: [...expandedGroupIds, nodeId];
+	}
+
+	function editGroup(nodeId: NodeId) {
+		const node = findNode(geometryDocument, nodeId);
+
+		if (!node || node.type !== 'group') {
+			return;
+		}
+
+		editingGroupId = nodeId;
+		expandedGroupIds = [...new Set([...expandedGroupIds, nodeId])];
+		selectedNodeIds = [];
+	}
+
+	function exitGroupEdit() {
+		editingGroupId = undefined;
+		selectedNodeIds = [];
+	}
+
+	function selectedNodesHaveSameParent() {
+		if (selectedNodeIds.length < 2) {
+			return false;
+		}
+
+		const parents = selectedNodeIds.map((nodeId) => findParentNode(geometryDocument, nodeId));
+		const firstParentId = parents[0]?.id;
+
+		return Boolean(firstParentId && parents.every((parent) => parent?.id === firstParentId));
+	}
+
+	function effectiveSelectedNodeIds() {
+		return selectedNodeIds.filter((nodeId) =>
+			!selectedNodeIds.some((candidateId) => candidateId !== nodeId && isAncestorOf(candidateId, nodeId))
+		);
+	}
+
+	function isAncestorOf(ancestorId: NodeId, nodeId: NodeId) {
+		let parent = findParentNode(geometryDocument, nodeId);
+
+		while (parent) {
+			if (parent.id === ancestorId) {
+				return true;
+			}
+
+			if (parent.id === geometryDocument.root.id) {
+				return false;
+			}
+
+			parent = findParentNode(geometryDocument, parent.id);
+		}
+
+		return false;
+	}
+
+	function canvasSelectableNodeId(hitNodeId: NodeId): NodeId | undefined {
+		if (editingGroupId) {
+			if (hitNodeId === editingGroupId) {
+				return undefined;
+			}
+
+			if (isAncestorOf(editingGroupId, hitNodeId)) {
+				return hitNodeId;
+			}
+
+			editingGroupId = undefined;
+		}
+
+		const ancestor = topGroupAncestor(hitNodeId);
+
+		return ancestor ?? hitNodeId;
+	}
+
+	function topGroupAncestor(nodeId: NodeId): NodeId | undefined {
+		let currentId = nodeId;
+		let parent = findParentNode(geometryDocument, currentId);
+		let topGroupId: NodeId | undefined;
+
+		while (parent && parent.id !== geometryDocument.root.id) {
+			topGroupId = parent.id;
+			currentId = parent.id;
+			parent = findParentNode(geometryDocument, currentId);
+		}
+
+		return topGroupId;
+	}
+
+	function groupSelection() {
+		if (!selectedNodesHaveSameParent()) {
+			return;
+		}
+
+		const groupId = `group-${nextNodeIndex}`;
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		updateActiveDocument(groupNodes(geometryDocument, selectedNodeIds, groupId, 'Group'));
+		selectedNodeIds = [groupId];
+		expandedGroupIds = [...new Set([...expandedGroupIds, groupId])];
+		nextNodeIndex += 1;
+	}
+
+	function ungroupSelection() {
+		if (selectedNodeIds.length !== 1) {
+			return;
+		}
+
+		const groupId = selectedNodeIds[0]!;
+		const group = findNode(geometryDocument, groupId);
+
+		if (!group || group.type !== 'group') {
+			return;
+		}
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		updateActiveDocument(ungroupNode(geometryDocument, groupId));
+		selectedNodeIds = group.children.map((child) => child.id);
+		expandedGroupIds = expandedGroupIds.filter((expandedGroupId) => expandedGroupId !== groupId);
+
+		if (editingGroupId === groupId) {
+			editingGroupId = undefined;
+		}
 	}
 
 	function nextPageId(): string {
@@ -1579,6 +1835,7 @@
 		undoStack = [];
 		redoStack = [];
 		selectedNodeIds = [];
+		editingGroupId = undefined;
 		finishPathDrawing();
 		saveStatus = 'saved';
 	}
@@ -2207,16 +2464,18 @@
 				onDragEnd={handleLayerSortEnd}
 			>
 				<div class="layer-list">
-					{#if layerNodes.length === 0}
+					{#if layerItems.length === 0}
 						<div class="empty-row">No nodes</div>
 					{/if}
 
-					{#each layerNodes as node, index (node.id)}
+					{#each visibleLayerItems as item (item.node.id)}
 						<LayerRow
-							{node}
-							{index}
-							selected={selectedNodeIds.includes(node.id)}
-							onSelect={(nodeId) => (selectedNodeIds = [nodeId])}
+							{item}
+							selected={selectedNodeIds.includes(item.node.id)}
+							onContextMenu={openLayerContextMenu}
+							onEditGroup={editGroup}
+							onSelect={selectNode}
+							onToggleExpanded={toggleGroupExpanded}
 						/>
 					{/each}
 				</div>
@@ -2233,8 +2492,9 @@
 					onpointermove={handlePointerMove}
 					onpointerup={handlePointerUp}
 					onpointerleave={handlePointerLeave}
+					ondblclick={handleCanvasDoubleClick}
 					onwheel={handleWheel}
-					oncontextmenu={(event) => event.preventDefault()}
+					oncontextmenu={handleCanvasContextMenu}
 				></canvas>
 			</section>
 
@@ -2310,6 +2570,75 @@
 						role="menuitem"
 						disabled={project.pages.length <= 1}
 						onclick={() => deletePage(pageContextMenuPage.id)}
+					>
+						Delete
+					</button>
+				</div>
+			{/if}
+
+			{#if layerContextMenu}
+				<div
+					class="page-context-menu layer-context-menu"
+					style={`left: ${layerContextMenu.x}px; top: ${layerContextMenu.y}px;`}
+					role="menu"
+					tabindex="-1"
+					onclick={(event) => event.stopPropagation()}
+					oncontextmenu={(event) => event.preventDefault()}
+					onkeydown={(event) => event.stopPropagation()}
+				>
+					<div class="page-context-title">
+						<span>
+							{#if selectedNodeIds.length > 1}
+								{selectedNodeIds.length} selected
+							{:else}
+								{layerContextMenuNode?.name ?? layerContextMenuNode?.type ?? 'Selection'}
+							{/if}
+						</span>
+					</div>
+					<button
+						type="button"
+						role="menuitem"
+						disabled={!selectedNodesHaveSameParent()}
+						onclick={() => {
+							groupSelection();
+							closeLayerContextMenu();
+						}}
+					>
+						Group
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						disabled={!(selectedNodeIds.length === 1 && selectedNode?.type === 'group')}
+						onclick={() => {
+							if (selectedNode?.type === 'group') {
+								editGroup(selectedNode.id);
+							}
+							closeLayerContextMenu();
+						}}
+					>
+						Edit Group
+					</button>
+					<button
+						type="button"
+						role="menuitem"
+						disabled={!(selectedNodeIds.length === 1 && selectedNode?.type === 'group')}
+						onclick={() => {
+							ungroupSelection();
+							closeLayerContextMenu();
+						}}
+					>
+						Ungroup
+					</button>
+					<button
+						class="danger"
+						type="button"
+						role="menuitem"
+						disabled={selectedNodeIds.length === 0}
+						onclick={() => {
+							deleteSelection();
+							closeLayerContextMenu();
+						}}
 					>
 						Delete
 					</button>
@@ -2421,7 +2750,7 @@
 						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
 					</svg>
 				</summary>
-				{#if selectedNode}
+				{#if selectedNode && selectedNodeIds.length === 1}
 					<div class="field-grid">
 						{#if selectedNode.type === 'rect'}
 							<label for="rect-x">X</label>
@@ -2609,7 +2938,7 @@
 						{/if}
 					</div>
 				{:else}
-					<div class="empty-row">No selection</div>
+					<div class="empty-row">{selectedNodeIds.length > 1 ? `${selectedNodeIds.length} selected` : 'No selection'}</div>
 				{/if}
 			</details>
 
@@ -2621,7 +2950,7 @@
 						<path class="section-chevron-open" stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
 					</svg>
 				</summary>
-				{#if selectedNode}
+				{#if selectedNode && selectedNodeIds.length === 1 && selectedNode.type !== 'group'}
 					<div class="field-grid">
 						<label for="fill">Fill</label>
 						<div class="paint-field">
@@ -2741,7 +3070,15 @@
 					</div>
 					<button class="secondary-button danger" type="button" onclick={deleteSelection}>Delete Selection</button>
 				{:else}
-					<div class="empty-row">No selection</div>
+					<div class="empty-row">
+						{#if selectedNodeIds.length > 1}
+							{selectedNodeIds.length} selected
+						{:else if selectedNode?.type === 'group'}
+							Group selected
+						{:else}
+							No selection
+						{/if}
+					</div>
 				{/if}
 			</details>
 
