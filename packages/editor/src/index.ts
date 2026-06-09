@@ -25,6 +25,11 @@ export type Viewport = {
   zoom: number;
 };
 
+export const viewportZoomLimits = {
+  min: 0.1,
+  max: 64
+} as const;
+
 export type ViewportSize = {
   width: number;
   height: number;
@@ -115,7 +120,7 @@ export function zoomViewportAtPoint(
   screenPoint: Point,
   nextZoom: number
 ): Viewport {
-  const zoom = clamp(nextZoom, 0.1, 8);
+  const zoom = clamp(nextZoom, viewportZoomLimits.min, viewportZoomLimits.max);
   const worldPoint = screenToWorld(screenPoint, viewport);
 
   return {
@@ -134,8 +139,8 @@ export function fitViewportToDocument(
   const availableHeight = Math.max(1, viewportSize.height - padding * 2);
   const zoom = clamp(
     Math.min(availableWidth / document.width, availableHeight / document.height),
-    0.1,
-    8
+    viewportZoomLimits.min,
+    viewportZoomLimits.max
   );
 
   return {
@@ -173,13 +178,15 @@ export function renderDocument(
     viewport.y * pixelRatio
   );
   context.setLineDash([]);
-  drawPage(context, document);
+  drawDocumentBackground(context, document);
 
   for (const child of document.root.children) {
     drawNode(context, child);
   }
 
   context.restore();
+
+  drawPageBorder(context, document, viewport, pixelRatio);
 
   for (const nodeId of options.selectedNodeIds ?? []) {
     const bounds = getNodeBounds(document, nodeId);
@@ -519,12 +526,22 @@ export function normalizeBounds(start: Point, end: Point): Bounds {
   };
 }
 
-function drawPage(context: CanvasRenderingContext2D, document: GeometryDocument): void {
+function drawPageBorder(
+  context: CanvasRenderingContext2D,
+  document: GeometryDocument,
+  viewport: Viewport,
+  pixelRatio: number
+): void {
   context.save();
-  drawDocumentBackground(context, document);
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.strokeStyle = "#d1d5db";
   context.lineWidth = 1;
-  context.strokeRect(0, 0, document.width, document.height);
+  context.strokeRect(
+    viewport.x,
+    viewport.y,
+    document.width * viewport.zoom,
+    document.height * viewport.zoom
+  );
   context.restore();
 }
 

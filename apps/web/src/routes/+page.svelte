@@ -719,6 +719,10 @@
 		});
 	}
 
+	function setActualSizeZoom() {
+		viewport = zoomViewportAtPoint(viewport, canvasCenterPoint(), 1);
+	}
+
 	function fitCanvasToActivePageAfterUpdate() {
 		void tick().then(() => {
 			if (canvas) {
@@ -2924,7 +2928,7 @@
 							<input
 								id="zoom-percent"
 								min="10"
-								max="800"
+								max="6400"
 								step="1"
 								type="number"
 								value={Math.round(viewport.zoom * 100)}
@@ -2932,6 +2936,9 @@
 							/>
 							<span>%</span>
 						</div>
+						<button class="secondary-button fit-button" type="button" title="Actual Size" onclick={setActualSizeZoom}>
+							100%
+						</button>
 						<button class="secondary-button fit-button" type="button" onclick={fitCanvasToDocument}>Fit</button>
 					</div>
 				</div>

@@ -926,7 +926,7 @@ canvas.panning {
 
 .zoom-row {
 	display: grid;
-	grid-template-columns: minmax(0, 1fr) 46px;
+	grid-template-columns: minmax(0, 1fr) 54px 46px;
 	gap: 6px;
 }
 
