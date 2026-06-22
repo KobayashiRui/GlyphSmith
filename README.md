@@ -1,159 +1,145 @@
-# Turborepo starter
+<p align="center">
+  <img src="docs/images/app-icon.svg" alt="GlyphSmith" width="72" height="72" />
+</p>
 
-This Turborepo starter is maintained by the Turborepo core team.
+<h1 align="center">GlyphSmith</h1>
 
-## Using this example
+<p align="center">
+  Agent-native SVG editor powered by Geometry AST and patch-based editing.
+</p>
 
-Run the following command:
+GlyphSmith is an SVG editor designed for both manual editing and AI-assisted editing.
+Instead of asking agents to rewrite whole SVG strings, GlyphSmith imports SVG into a Geometry AST,
+applies targeted patch operations, and exports SVG only at the boundary.
 
-```sh
-npx create-turbo@latest
+![GlyphSmith editor](docs/images/editor.png)
+
+```txt
+SVG
+↓ Import
+Geometry AST
+↓ Patch Operations
+Geometry AST
+↓ Export
+SVG
 ```
 
-## What's inside?
+## Status
 
-This Turborepo includes the following packages/apps:
+GlyphSmith is in early development. The current release is CLI-first and focuses on local editor sessions, project files, SVG export, and MCP-based agent workflows.
 
-### Apps and Packages
+## Quick Start
 
-- `docs`: a [Next.js](https://nextjs.org/) app
-- `web`: another [Next.js](https://nextjs.org/) app
-- `@repo/ui`: a stub React component library shared by both `web` and `docs` applications
-- `@repo/eslint-config`: `eslint` configurations (includes `eslint-config-next` and `eslint-config-prettier`)
-- `@repo/typescript-config`: `tsconfig.json`s used throughout the monorepo
-
-Each package/app is 100% [TypeScript](https://www.typescriptlang.org/).
-
-### Utilities
-
-This Turborepo has some additional tools already setup for you:
-
-- [TypeScript](https://www.typescriptlang.org/) for static type checking
-- [ESLint](https://eslint.org/) for code linting
-- [Prettier](https://prettier.io) for code formatting
-
-### Build
-
-To build all apps and packages, run the following command:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Install dependencies:
 
 ```sh
-cd my-turborepo
-turbo build
+pnpm install
 ```
 
-Without global `turbo`, use your package manager:
+Run the default development project:
 
 ```sh
-cd my-turborepo
-npx turbo build
-pnpm dlx turbo build
-pnpm exec turbo build
+pnpm run dev
 ```
 
-You can build a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+Development defaults:
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+```txt
+Project: examples/playground.gs.json
+UI:      http://localhost:6201
+Host:    ws://localhost:6202/ws
+MCP:     http://localhost:6202/mcp
+```
+
+Run the official GlyphSmith icon project:
 
 ```sh
-turbo build --filter=docs
+pnpm run dev:icons
 ```
 
-Without global `turbo`:
+## Export Icons
+
+Export the icon project into the web app static directory:
 
 ```sh
-npx turbo build --filter=docs
-pnpm exec turbo build --filter=docs
-pnpm exec turbo build --filter=docs
+pnpm run export:icons
 ```
 
-### Develop
+The generated SVG files are written to:
 
-To develop all apps and packages, run the following command:
+```txt
+apps/web/static/icons
+```
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
+Running the command again overwrites the generated icon output.
+
+## Agent Workflow
+
+GlyphSmith keeps the Geometry AST as the source of truth. AI agents should modify projects through patch operations or MCP tools instead of regenerating SVG files.
+
+Default local MCP endpoint:
+
+```txt
+http://127.0.0.1:6202/mcp
+```
+
+Register the local MCP endpoint:
 
 ```sh
-cd my-turborepo
-turbo dev
+glyphsmith mcp install codex --url http://127.0.0.1:6202/mcp
+glyphsmith mcp install claude --url http://127.0.0.1:6202/mcp
 ```
 
-Without global `turbo`, use your package manager:
+Install GlyphSmith skills:
 
 ```sh
-cd my-turborepo
-npx turbo dev
-pnpm exec turbo dev
-pnpm exec turbo dev
+glyphsmith skills install codex
+glyphsmith skills install claude
 ```
 
-You can develop a specific package by using a [filter](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters):
+## Project Files
 
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
+GlyphSmith project files use the `.gs.json` extension and can contain multiple pages. One page maps to one SVG-equivalent Geometry AST document.
 
-```sh
-turbo dev --filter=web
+Examples:
+
+```txt
+examples/playground.gs.json
+examples/glyphsmith.gs.json
 ```
 
-Without global `turbo`:
+CLI path resolution is deterministic:
 
-```sh
-npx turbo dev --filter=web
-pnpm exec turbo dev --filter=web
-pnpm exec turbo dev --filter=web
+```txt
+glyphsmith              -> ./glyphsmith.gs.json
+glyphsmith logo         -> ./logo.gs.json
+glyphsmith logo.gs.json -> ./logo.gs.json
 ```
 
-### Remote Caching
+If the resolved project file does not exist, the CLI creates it and continues.
 
-> [!TIP]
-> Vercel Remote Cache is free for all plans. Get started today at [vercel.com](https://vercel.com/signup?utm_source=remote-cache-sdk&utm_campaign=free_remote_cache).
+## Repository Layout
 
-Turborepo can use a technique known as [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching) to share cache artifacts across machines, enabling you to share build caches with your team and CI/CD pipelines.
+```txt
+apps/
+├ cli/  Local host, CLI entrypoint, MCP coordination
+└ web/  SvelteKit editor UI
 
-By default, Turborepo will cache locally. To enable Remote Caching you will need an account with Vercel. If you don't have an account you can [create one](https://vercel.com/signup?utm_source=turborepo-examples), then enter the following commands:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed (recommended):
-
-```sh
-cd my-turborepo
-turbo login
+packages/
+├ ast/     Geometry AST definitions
+├ editor/  Reusable editor interaction logic
+├ kernel/  Geometry operations
+├ mcp/     MCP server implementation
+└ svg/     SVG import/export
 ```
 
-Without global `turbo`, use your package manager:
+## README Assets
 
-```sh
-cd my-turborepo
-npx turbo login
-pnpm exec turbo login
-pnpm exec turbo login
+README images live in `docs/images`. App runtime assets live in `apps/web/static`.
+
+Current README assets:
+
+```txt
+docs/images/app-icon.svg
+docs/images/editor.png
 ```
-
-This will authenticate the Turborepo CLI with your [Vercel account](https://vercel.com/docs/concepts/personal-accounts/overview).
-
-Next, you can link your Turborepo to your Remote Cache by running the following command from the root of your Turborepo:
-
-With [global `turbo`](https://turborepo.dev/docs/getting-started/installation#global-installation) installed:
-
-```sh
-turbo link
-```
-
-Without global `turbo`:
-
-```sh
-npx turbo link
-pnpm exec turbo link
-pnpm exec turbo link
-```
-
-## Useful Links
-
-Learn more about the power of Turborepo:
-
-- [Tasks](https://turborepo.dev/docs/crafting-your-repository/running-tasks)
-- [Caching](https://turborepo.dev/docs/crafting-your-repository/caching)
-- [Remote Caching](https://turborepo.dev/docs/core-concepts/remote-caching)
-- [Filtering](https://turborepo.dev/docs/crafting-your-repository/running-tasks#using-filters)
-- [Configuration Options](https://turborepo.dev/docs/reference/configuration)
-- [CLI Usage](https://turborepo.dev/docs/reference/command-line-reference)
