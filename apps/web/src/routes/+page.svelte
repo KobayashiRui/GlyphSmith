@@ -97,6 +97,7 @@
 	let layerContextMenu = $state<{ nodeId?: NodeId; x: number; y: number } | undefined>();
 	let pageContextMenu = $state<{ pageId: string; x: number; y: number } | undefined>();
 	let pageTooltip = $state<{ text: string; x: number; y: number } | undefined>();
+	let toolTooltip = $state<{ text: string; x: number; y: number } | undefined>();
 	let renamingPageId = $state<string | undefined>();
 	let renamingPageName = $state('');
 	let pageRenameInput = $state<HTMLInputElement | undefined>();
@@ -368,6 +369,7 @@
 
 	function setTool(nextTool: Tool) {
 		tool = nextTool;
+		closeToolTooltip();
 		draftStart = undefined;
 		draftEnd = undefined;
 		shapePreviewPoint = undefined;
@@ -380,6 +382,7 @@
 
 	function setLineTool(mode: PathSegmentMode) {
 		pathSegmentMode = mode;
+		closeToolTooltip();
 
 		if (tool !== 'path') {
 			setTool('path');
@@ -1534,6 +1537,23 @@
 
 	function closePageTooltip() {
 		pageTooltip = undefined;
+	}
+
+	function showToolTooltip(event: MouseEvent | FocusEvent, text: string) {
+		const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+		const gutter = 12;
+		const tooltipOffset = 10;
+		const maxTooltipWidth = 180;
+
+		toolTooltip = {
+			text,
+			x: Math.max(gutter, Math.min(rect.right + tooltipOffset, window.innerWidth - gutter - maxTooltipWidth)),
+			y: rect.top + rect.height / 2
+		};
+	}
+
+	function closeToolTooltip() {
+		toolTooltip = undefined;
 	}
 
 	function openLayerContextMenu(event: MouseEvent, nodeId?: NodeId) {
@@ -2974,35 +2994,35 @@
 		<div class="editor-stage">
 			<section class="canvas-shell">
 				<div class="toolbar" aria-label="Tools">
-					<button aria-label="Select" title="Select" class:active={tool === 'select'} type="button" onclick={() => setTool('select')}>
+					<button aria-label="Select" class:active={tool === 'select'} type="button" onclick={() => setTool('select')} onmouseenter={(event) => showToolTooltip(event, 'Select')} onfocus={(event) => showToolTooltip(event, 'Select')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.select} />
 					</button>
-					<button aria-label="Rectangle" title="Rectangle" class:active={tool === 'rect'} type="button" onclick={() => setTool('rect')}>
+					<button aria-label="Rectangle" class:active={tool === 'rect'} type="button" onclick={() => setTool('rect')} onmouseenter={(event) => showToolTooltip(event, 'Rectangle')} onfocus={(event) => showToolTooltip(event, 'Rectangle')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.rect} />
 					</button>
-					<button aria-label="Ellipse" title="Ellipse" class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')}>
+					<button aria-label="Ellipse" class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')} onmouseenter={(event) => showToolTooltip(event, 'Ellipse')} onfocus={(event) => showToolTooltip(event, 'Ellipse')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.ellipse} />
 					</button>
-					<button aria-label="Triangle" title="Triangle" class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>
+					<button aria-label="Triangle" class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')} onmouseenter={(event) => showToolTooltip(event, 'Triangle')} onfocus={(event) => showToolTooltip(event, 'Triangle')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.triangle} />
 					</button>
-					<button aria-label="Text" title="Text" class:active={tool === 'text'} type="button" onclick={() => setTool('text')}>
+					<button aria-label="Text" class:active={tool === 'text'} type="button" onclick={() => setTool('text')} onmouseenter={(event) => showToolTooltip(event, 'Text')} onfocus={(event) => showToolTooltip(event, 'Text')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.text} />
 					</button>
 					<div class="toolbar-separator" aria-hidden="true"></div>
-					<button aria-label="Line" title="Line" class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>
+					<button aria-label="Line" class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')} onmouseenter={(event) => showToolTooltip(event, 'Line')} onfocus={(event) => showToolTooltip(event, 'Line')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.line} />
 					</button>
-					<button aria-label="Arc" title="Arc" class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>
+					<button aria-label="Arc" class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')} onmouseenter={(event) => showToolTooltip(event, 'Arc')} onfocus={(event) => showToolTooltip(event, 'Arc')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.arc} />
 					</button>
-					<button aria-label="Cubic Bezier" title="Cubic Bezier" class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>
+					<button aria-label="Cubic Bezier" class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')} onmouseenter={(event) => showToolTooltip(event, 'Cubic Bezier')} onfocus={(event) => showToolTooltip(event, 'Cubic Bezier')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.cubic} />
 					</button>
-					<button aria-label="Catmull" title="Catmull" class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')}>
+					<button aria-label="Catmull" class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')} onmouseenter={(event) => showToolTooltip(event, 'Catmull')} onfocus={(event) => showToolTooltip(event, 'Catmull')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.catmullRom} />
 					</button>
-					<button aria-label="Basis" title="Basis" class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')}>
+					<button aria-label="Basis" class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')} onmouseenter={(event) => showToolTooltip(event, 'Basis')} onfocus={(event) => showToolTooltip(event, 'Basis')} onmouseleave={closeToolTooltip} onblur={closeToolTooltip}>
 						<img alt="" aria-hidden="true" src={iconPaths.basis} />
 					</button>
 				</div>
@@ -3052,6 +3072,16 @@
 					role="tooltip"
 				>
 					{pageTooltip.text}
+				</div>
+			{/if}
+
+			{#if toolTooltip}
+				<div
+					class="tool-floating-tooltip"
+					style={`left: ${toolTooltip.x}px; top: ${toolTooltip.y}px;`}
+					role="tooltip"
+				>
+					{toolTooltip.text}
 				</div>
 			{/if}
 
