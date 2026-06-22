@@ -36,8 +36,8 @@ button {
 
 .topbar {
 	display: grid;
-	grid-template-columns: minmax(300px, 32vw) auto minmax(0, 1fr) auto;
-	gap: 16px;
+	grid-template-columns: auto auto minmax(0, 1fr) auto;
+	gap: 14px;
 	align-items: center;
 	border-bottom: 1px solid var(--color-gs-border-muted);
 	background: var(--color-gs-chrome);
@@ -47,11 +47,14 @@ button {
 .topbar-brand {
 	display: flex;
 	align-items: center;
-	gap: 12px;
 	min-width: 0;
 }
 
-.topbar-brand h1 {
+.project-name-shell {
+	min-width: 0;
+}
+
+.project-name-shell h1 {
 	margin: 0;
 	font-size: 16px;
 	line-height: 1.2;
@@ -61,8 +64,10 @@ button {
 	display: flex;
 	align-items: center;
 	gap: 8px;
+	width: 100%;
 	min-width: 0;
 	max-width: 100%;
+	justify-content: flex-start;
 	border: 0;
 	background: transparent;
 	padding: 0;
@@ -92,7 +97,7 @@ button {
 }
 
 .project-name-input {
-	width: min(260px, 34vw);
+	width: min(420px, 100%);
 	min-width: 120px;
 	border: 1px solid var(--color-gs-primary);
 	border-radius: 5px;
@@ -105,24 +110,29 @@ button {
 }
 
 .toolbar {
-	display: inline-flex;
-	justify-self: center;
-	min-width: 0;
-	max-width: max-content;
+	position: absolute;
+	top: 12px;
+	left: 12px;
+	z-index: 5;
+	display: flex;
+	flex-direction: column;
+	width: 42px;
 	overflow: hidden;
 	border: 1px solid var(--color-gs-border);
 	border-radius: 6px;
 	background: var(--color-gs-control);
+	box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22);
 }
 
 .toolbar button {
 	display: grid;
 	width: 40px;
 	min-width: 40px;
-	min-height: 36px;
+	height: 40px;
+	min-height: 40px;
 	place-items: center;
 	border: 0;
-	border-right: 1px solid var(--color-gs-border);
+	border-bottom: 1px solid var(--color-gs-border);
 	background: transparent;
 	color: var(--color-gs-text-muted);
 	font-size: 12px;
@@ -137,7 +147,7 @@ button {
 }
 
 .toolbar button:last-child {
-	border-right: 0;
+	border-bottom: 0;
 }
 
 .toolbar button.active {
@@ -145,13 +155,20 @@ button {
 	color: var(--color-gs-text-inverse);
 }
 
+.toolbar-separator {
+	width: 100%;
+	height: 7px;
+	border-bottom: 1px solid var(--color-gs-border);
+	background: var(--color-gs-chrome);
+}
+
 .history-controls {
 	display: flex;
 	gap: 6px;
-	margin-left: 8px;
 }
 
 .topbar-status {
+	grid-column: 4;
 	display: flex;
 	align-items: center;
 	justify-content: flex-end;
