@@ -40,6 +40,15 @@ Install dependencies:
 pnpm install
 ```
 
+Start a new project:
+
+```sh
+pnpm --filter glyphsmith run build
+node apps/cli/dist/index.js my-logo
+```
+
+This opens `./my-logo.gs.json`. If the file does not exist, GlyphSmith creates it automatically.
+
 Run the default development project:
 
 ```sh
