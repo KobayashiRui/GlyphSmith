@@ -104,6 +104,7 @@
 	type DragStartEvent = Parameters<NonNullable<DragDropEventHandlers['onDragStart']>>[0];
 	type DragOverEvent = Parameters<NonNullable<DragDropEventHandlers['onDragOver']>>[0];
 	type DragEndEvent = Parameters<NonNullable<DragDropEventHandlers['onDragEnd']>>[0];
+	type ShapeTool = 'rect' | 'ellipse' | 'triangle';
 
 	const uiColors = {
 		primary: '#4f8ef7',
@@ -235,14 +236,10 @@
 		connectHostWebSocket();
 
 		const resize = () => {
-			const rect = canvas.getBoundingClientRect();
-			canvasPixelRatio = window.devicePixelRatio || 1;
-			canvas.width = Math.max(1, Math.round(rect.width * canvasPixelRatio));
-			canvas.height = Math.max(1, Math.round(rect.height * canvasPixelRatio));
+			resizeCanvasToElement();
 
 			if (!hasFitInitialViewport) {
-				fitCanvasToDocument();
-				hasFitInitialViewport = true;
+				fitInitialCanvasToDocument();
 				return;
 			}
 
@@ -321,6 +318,7 @@
 		};
 
 		resize();
+		void fitCanvasToDocumentAfterLayout();
 		window.addEventListener('resize', resize);
 		window.addEventListener('keydown', handleKeyDown);
 		window.addEventListener('keyup', handleKeyUp);
@@ -717,12 +715,39 @@
 	}
 
 	function fitCanvasToDocument() {
-		const rect = canvas.getBoundingClientRect();
+		const rect = resizeCanvasToElement();
+
+		if (rect.width <= 0 || rect.height <= 0) {
+			return;
+		}
 
 		viewport = fitViewportToDocument(geometryDocument, {
 			width: rect.width,
 			height: rect.height
 		});
+	}
+
+	function fitInitialCanvasToDocument() {
+		fitCanvasToDocument();
+		hasFitInitialViewport = true;
+	}
+
+	async function fitCanvasToDocumentAfterLayout() {
+		await tick();
+		await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+
+		if (canvas) {
+			fitInitialCanvasToDocument();
+		}
+	}
+
+	function resizeCanvasToElement() {
+		const rect = canvas.getBoundingClientRect();
+		canvasPixelRatio = window.devicePixelRatio || 1;
+		canvas.width = Math.max(1, Math.round(rect.width * canvasPixelRatio));
+		canvas.height = Math.max(1, Math.round(rect.height * canvasPixelRatio));
+
+		return rect;
 	}
 
 	function setActualSizeZoom() {
@@ -759,7 +784,8 @@
 				id: pathId,
 				start: draftStart,
 				end: draftEnd,
-				segmentMode: pathSegmentMode
+				segmentMode: pathSegmentMode,
+				style: defaultStrokeStyle()
 			});
 
 			commitPatch(patch);
@@ -948,11 +974,11 @@
 		return target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement;
 	}
 
-	function isShapeTool(value: Tool): value is 'rect' | 'ellipse' | 'triangle' {
+	function isShapeTool(value: Tool): value is ShapeTool {
 		return value === 'rect' || value === 'ellipse' || value === 'triangle';
 	}
 
-	function insertShapeAtPoint(shapeTool: 'rect' | 'ellipse' | 'triangle', point: Point) {
+	function insertShapeAtPoint(shapeTool: ShapeTool, point: Point) {
 		const id = `${shapeTool}-${nextNodeIndex}`;
 		const placementPoint = clampPointToDocument(point);
 		const { start, end } = shapeBoundsForPlacement(shapeTool, placementPoint, placementPoint);
@@ -976,7 +1002,7 @@
 			text: 'Text',
 			fill: '#111827',
 			fontFamily: 'Inter, system-ui, sans-serif',
-			fontSize: 24,
+			fontSize: defaultTextFontSize(),
 			fontWeight: '400'
 		};
 
@@ -997,21 +1023,16 @@
 		};
 	}
 
-	function shapeBoundsForPlacement(shapeTool: 'rect' | 'ellipse' | 'triangle', start: Point, end: Point) {
+	function shapeBoundsForPlacement(shapeTool: ShapeTool, start: Point, end: Point) {
 		const distance = Math.hypot(end.x - start.x, end.y - start.y);
 
 		if (distance > 2 / viewport.zoom) {
 			return { start, end };
 		}
 
-		const defaultSize =
-			shapeTool === 'rect'
-				? { width: 96, height: 64 }
-				: shapeTool === 'ellipse'
-					? { width: 112, height: 72 }
-					: { width: 88, height: 76 };
+		const defaultSize = defaultShapeSize(shapeTool);
 
-		return {
+		return clampBoundsToDocument({
 			start: {
 				x: start.x - defaultSize.width / 2,
 				y: start.y - defaultSize.height / 2
@@ -1020,20 +1041,67 @@
 				x: start.x + defaultSize.width / 2,
 				y: start.y + defaultSize.height / 2
 			}
+		});
+	}
+
+	function defaultShapeSize(shapeTool: ShapeTool) {
+		const canvasWidth = Math.max(1, geometryDocument.width);
+		const canvasHeight = Math.max(1, geometryDocument.height);
+		const shortSide = Math.min(canvasWidth, canvasHeight);
+		const widthRatio = shapeTool === 'ellipse' ? 0.44 : shapeTool === 'triangle' ? 0.34 : 0.38;
+		const heightRatio = shapeTool === 'triangle' ? 0.3 : 0.25;
+
+		return {
+			width: clampDimension(shortSide * widthRatio, 1, canvasWidth),
+			height: clampDimension(shortSide * heightRatio, 1, canvasHeight)
 		};
 	}
 
+	function defaultTextFontSize() {
+		const shortSide = Math.max(1, Math.min(geometryDocument.width, geometryDocument.height));
+
+		return clampDimension(shortSide * 0.094, 1, Math.max(1, geometryDocument.height));
+	}
+
+	function defaultStrokeWidth() {
+		const shortSide = Math.max(1, Math.min(geometryDocument.width, geometryDocument.height));
+
+		return clampDimension(shortSide * 0.008, 0.5, 64);
+	}
+
+	function defaultStrokeStyle(): NodeStyle {
+		return {
+			fill: 'none',
+			stroke: uiColors.primary,
+			strokeWidth: defaultStrokeWidth()
+		};
+	}
+
+	function clampBoundsToDocument(bounds: { start: Point; end: Point }) {
+		const x = Math.min(bounds.start.x, bounds.end.x);
+		const y = Math.min(bounds.start.y, bounds.end.y);
+		const width = Math.abs(bounds.end.x - bounds.start.x);
+		const height = Math.abs(bounds.end.y - bounds.start.y);
+		const nextX = clampDimension(x, 0, Math.max(0, geometryDocument.width - width));
+		const nextY = clampDimension(y, 0, Math.max(0, geometryDocument.height - height));
+
+		return {
+			start: { x: nextX, y: nextY },
+			end: { x: nextX + width, y: nextY + height }
+		};
+	}
+
+	function clampDimension(value: number, min: number, max: number) {
+		return Math.min(Math.max(value, min), max);
+	}
+
 	function createShapeInsertPatch(
-		shapeTool: 'rect' | 'ellipse' | 'triangle',
+		shapeTool: ShapeTool,
 		id: NodeId,
 		start: Point,
 		end: Point
 	) {
-		const style: NodeStyle = {
-			fill: 'none',
-			stroke: uiColors.primary,
-			strokeWidth: 2
-		};
+		const style = defaultStrokeStyle();
 
 		if (shapeTool === 'rect') {
 			return createRectInsertPatch({ id, start, end, style });
@@ -2074,6 +2142,10 @@
 		editingGroupId = undefined;
 		finishPathDrawing();
 		saveStatus = 'saved';
+
+		if (hasFitInitialViewport) {
+			void fitCanvasToDocumentAfterLayout();
+		}
 	}
 
 	function markProjectChanged() {
