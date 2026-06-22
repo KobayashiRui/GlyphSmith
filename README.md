@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/app-icon.svg" alt="GlyphSmith" width="72" height="72" />
+  <img src="https://raw.githubusercontent.com/KobayashiRui/GlyphSmith/main/docs/images/app-icon.svg" alt="GlyphSmith" width="72" height="72" />
 </p>
 
 <h1 align="center">GlyphSmith</h1>
@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  English | <a href="README.ja.md">日本語</a>
+  English | <a href="https://github.com/KobayashiRui/GlyphSmith/blob/main/README.ja.md">日本語</a>
 </p>
 
 GlyphSmith is an SVG editor designed for both manual editing and AI-assisted editing.
 Instead of asking agents to rewrite whole SVG strings, GlyphSmith imports SVG into a Geometry AST,
 applies targeted patch operations, and exports SVG only at the boundary.
 
-![GlyphSmith editor](docs/images/editor.png)
+![GlyphSmith editor](https://raw.githubusercontent.com/KobayashiRui/GlyphSmith/main/docs/images/editor.png)
 
 ```txt
 SVG
@@ -34,79 +34,25 @@ GlyphSmith is in early development. The current release is CLI-first and focuses
 
 ## Quick Start
 
-Install dependencies:
+Install GlyphSmith:
 
 ```sh
-pnpm install
+npm install -g glyphsmith
 ```
 
 Start a new project:
 
 ```sh
-npx glyphsmith my-logo
+glyphsmith my-logo
 ```
 
 This opens `./my-logo.gs.json`. If the file does not exist, GlyphSmith creates it automatically.
 
-When running from this repository:
+You can also run it without a global install:
 
 ```sh
-pnpm run build:cli
-node apps/cli/dist/index.js my-logo
+npx glyphsmith my-logo
 ```
-
-Run the default development project:
-
-```sh
-pnpm run dev
-```
-
-Development defaults:
-
-```txt
-Project: examples/playground.gs.json
-UI:      http://localhost:6201
-Host:    ws://localhost:6202/ws
-MCP:     http://localhost:6202/mcp
-```
-
-Run the official GlyphSmith icon project:
-
-```sh
-pnpm run dev:icons
-```
-
-## Export Icons
-
-Export the icon project into the web app static directory:
-
-```sh
-pnpm run export:icons
-```
-
-The generated SVG files are written to:
-
-```txt
-apps/web/static/icons
-```
-
-Running the command again overwrites the generated icon output.
-
-## Package
-
-Build the publishable CLI package:
-
-```sh
-pnpm run build:cli
-```
-
-Create a local npm tarball for inspection:
-
-```sh
-pnpm run pack:cli
-```
-
-The package is written to `artifacts/npm` and contains the bundled CLI, built web UI, and GlyphSmith skills.
 
 ## Agent Workflow
 
@@ -178,3 +124,71 @@ Current README assets:
 docs/images/app-icon.svg
 docs/images/editor.png
 ```
+
+## Developer Workflow
+
+Install dependencies:
+
+```sh
+pnpm install
+```
+
+Run GlyphSmith from this repository:
+
+```sh
+pnpm run build:cli
+node apps/cli/dist/index.js my-logo
+```
+
+Run the default development project:
+
+```sh
+pnpm run dev
+```
+
+Development defaults:
+
+```txt
+Project: examples/playground.gs.json
+UI:      http://localhost:6201
+Host:    ws://localhost:6202/ws
+MCP:     http://localhost:6202/mcp
+```
+
+Run the official GlyphSmith icon project:
+
+```sh
+pnpm run dev:icons
+```
+
+### Export Icons
+
+Export the icon project into the web app static directory:
+
+```sh
+pnpm run export:icons
+```
+
+The generated SVG files are written to:
+
+```txt
+apps/web/static/icons
+```
+
+Running the command again overwrites the generated icon output.
+
+### Package
+
+Build the publishable CLI package:
+
+```sh
+pnpm run build:cli
+```
+
+Create a local npm tarball for inspection:
+
+```sh
+pnpm run pack:cli
+```
+
+The package is written to `artifacts/npm` and contains the bundled CLI, built web UI, and GlyphSmith skills.

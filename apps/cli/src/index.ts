@@ -16,6 +16,7 @@ import { startHostServer } from "./server.js";
 const DEFAULT_PORT = "6201";
 const DEFAULT_HOST_PORT = "6202";
 const DEFAULT_HOST = "127.0.0.1";
+const DEFAULT_PUBLIC_HOST = "localhost";
 const DEV_BIND_HOST = "0.0.0.0";
 const DEV_PUBLIC_HOST = "localhost";
 const cliDirectory = fileURLToPath(new URL(".", import.meta.url));
@@ -131,7 +132,8 @@ async function main(): Promise<void> {
   if (hostPort !== requestedHostPort) {
     console.log(`✓ Host port ${requestedHostPort} is unavailable, using ${hostPort}`);
   }
-  console.log(`✓ UI running on http://${DEFAULT_HOST}:${port}`);
+  const uiUrl = `http://${DEFAULT_PUBLIC_HOST}:${port}/`;
+  console.log(`✓ UI running on ${terminalLink(uiUrl)}`);
   console.log(`✓ Host running on ws://${DEFAULT_HOST}:${hostPort}/ws`);
   console.log(`✓ MCP running on ${mcpUrl}`);
 
@@ -169,6 +171,14 @@ async function main(): Promise<void> {
 
 function packagedWebDirectoryExists(): boolean {
   return existsSync(resolve(packagedWebDirectory, "index.html"));
+}
+
+function terminalLink(url: string, label = url): string {
+  if (!process.stdout.isTTY || process.env.CI) {
+    return label;
+  }
+
+  return `\u001B]8;;${url}\u0007${label}\u001B]8;;\u0007`;
 }
 
 async function findAvailablePort(startPort: string, reservedPorts = new Set<string>(), host = DEFAULT_HOST): Promise<string> {

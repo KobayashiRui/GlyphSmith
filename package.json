@@ -10,6 +10,7 @@
     "export:icons": "pnpm --filter glyphsmith run build && node apps/cli/dist/index.js export --example glyphsmith --out apps/web/static/icons --clean",
     "pack:cli": "pnpm --dir apps/cli pack --pack-destination ../../artifacts/npm",
     "publish:check": "pnpm run check-types && pnpm --filter web run check && pnpm run pack:cli",
+    "publish:npm": "pnpm run publish:check && npm publish ./apps/cli",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"
