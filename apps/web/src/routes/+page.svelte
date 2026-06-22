@@ -100,6 +100,9 @@
 	let renamingPageId = $state<string | undefined>();
 	let renamingPageName = $state('');
 	let pageRenameInput = $state<HTMLInputElement | undefined>();
+	let renamingProjectName = $state(false);
+	let projectNameDraft = $state('');
+	let projectNameInput = $state<HTMLInputElement | undefined>();
 
 	type DragStartEvent = Parameters<NonNullable<DragDropEventHandlers['onDragStart']>>[0];
 	type DragOverEvent = Parameters<NonNullable<DragDropEventHandlers['onDragOver']>>[0];
@@ -632,6 +635,58 @@
 
 	function updateActivePageName(event: Event) {
 		updatePageName(project.activePageId, (event.currentTarget as HTMLInputElement).value);
+	}
+
+	function startProjectNameRename() {
+		renamingProjectName = true;
+		projectNameDraft = project.name;
+		void tick().then(() => {
+			projectNameInput?.focus();
+			projectNameInput?.select();
+		});
+	}
+
+	function confirmProjectNameRename() {
+		if (!renamingProjectName) {
+			return;
+		}
+
+		const name = projectNameDraft.trim();
+		renamingProjectName = false;
+		projectNameDraft = '';
+
+		if (!name || name === project.name) {
+			return;
+		}
+
+		undoStack = [...undoStack, cloneProject(project)];
+		redoStack = [];
+		project = {
+			...project,
+			name,
+			updatedAt: new Date().toISOString()
+		};
+		markProjectChanged();
+	}
+
+	function cancelProjectNameRename() {
+		renamingProjectName = false;
+		projectNameDraft = '';
+	}
+
+	function handleProjectNameKeyDown(event: KeyboardEvent) {
+		event.stopPropagation();
+
+		if (event.key === 'Enter') {
+			event.preventDefault();
+			confirmProjectNameRename();
+			return;
+		}
+
+		if (event.key === 'Escape') {
+			event.preventDefault();
+			cancelProjectNameRename();
+		}
 	}
 
 	type BackgroundPreset = 'alpha' | 'black' | 'gray' | 'white';
@@ -2781,9 +2836,22 @@
 	<header class="topbar">
 		<div class="topbar-brand">
 			<div class="brand-mark">G</div>
-			<div>
-				<h1>{project.name}</h1>
-			</div>
+			{#if renamingProjectName}
+				<input
+					bind:this={projectNameInput}
+					class="project-name-input"
+					type="text"
+					value={projectNameDraft}
+					oninput={(event) => (projectNameDraft = event.currentTarget.value)}
+					onblur={confirmProjectNameRename}
+					onkeydown={handleProjectNameKeyDown}
+				/>
+			{:else}
+				<div class="project-name-display">
+					<h1>{project.name}</h1>
+					<button class="project-name-edit-button" type="button" onclick={startProjectNameRename}>Edit</button>
+				</div>
+			{/if}
 		</div>
 
 		<div class="history-controls" aria-label="History">
