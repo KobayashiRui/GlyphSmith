@@ -8,6 +8,10 @@
   Agent-native SVG editor powered by Geometry AST and patch-based editing.
 </p>
 
+<p align="center">
+  English | <a href="README.ja.md">日本語</a>
+</p>
+
 GlyphSmith is an SVG editor designed for both manual editing and AI-assisted editing.
 Instead of asking agents to rewrite whole SVG strings, GlyphSmith imports SVG into a Geometry AST,
 applies targeted patch operations, and exports SVG only at the boundary.
