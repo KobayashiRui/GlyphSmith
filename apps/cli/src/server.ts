@@ -1,5 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
+import { createReadStream, existsSync } from "node:fs";
+import { stat } from "node:fs/promises";
 import type { Socket } from "node:net";
+import { extname, join, normalize, resolve, sep } from "node:path";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { handleMcpBody } from "@glyphsmith/mcp";
@@ -16,6 +19,7 @@ export type HostServerOptions = {
   mcpUrl: string;
   port: string;
   store: ProjectStore;
+  webDirectory?: string;
 };
 
 export function startHostServer(options: HostServerOptions): HostServer {
@@ -23,6 +27,14 @@ export function startHostServer(options: HostServerOptions): HostServer {
   const app = createHostApp(options);
   const server = createServer(async (request, response) => {
     try {
+      if (options.webDirectory && shouldServeWebAsset(request)) {
+        const served = await serveWebAsset(options.webDirectory, request, response);
+
+        if (served) {
+          return;
+        }
+      }
+
       const fetchRequest = await nodeRequestToFetchRequest(request);
       const fetchResponse = await app.fetch(fetchRequest);
       await writeFetchResponse(response, fetchResponse);
@@ -63,6 +75,7 @@ function createHostApp(options: HostServerOptions): Hono {
 
   app.get("/project", (context) => {
     return context.json({
+      hostWebSocketUrl: websocketUrl(context.req.raw.url, options.host, options.port),
       project: options.store.readProject(),
       revision: options.store.revision()
     });
@@ -88,6 +101,90 @@ function createHostApp(options: HostServerOptions): Hono {
   });
 
   return app;
+}
+
+function shouldServeWebAsset(request: IncomingMessage): boolean {
+  const method = request.method ?? "GET";
+
+  if (method !== "GET" && method !== "HEAD") {
+    return false;
+  }
+
+  const pathname = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`).pathname;
+  return !pathname.startsWith("/mcp") && pathname !== "/health" && pathname !== "/project" && pathname !== "/ws";
+}
+
+async function serveWebAsset(webDirectory: string, request: IncomingMessage, response: ServerResponse): Promise<boolean> {
+  const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+  const pathname = decodeURIComponent(url.pathname);
+  const requestedPath = pathname === "/" ? "index.html" : pathname.replace(/^\/+/, "");
+  const resolvedWebDirectory = resolve(webDirectory);
+  const candidatePath = resolve(resolvedWebDirectory, normalize(requestedPath));
+
+  if (!candidatePath.startsWith(`${resolvedWebDirectory}${sep}`) && candidatePath !== resolvedWebDirectory) {
+    response.writeHead(403, { "content-type": "text/plain; charset=utf-8" });
+    response.end("Forbidden");
+    return true;
+  }
+
+  const filePath = await webFilePath(candidatePath, resolvedWebDirectory);
+
+  if (!filePath) {
+    return false;
+  }
+
+  const headers: Record<string, string> = {
+    "content-type": contentTypeForPath(filePath)
+  };
+
+  const fileStat = await stat(filePath);
+  headers["content-length"] = String(fileStat.size);
+
+  if (request.method === "HEAD") {
+    response.writeHead(200, headers);
+    response.end();
+    return true;
+  }
+
+  response.writeHead(200, headers);
+  createReadStream(filePath).pipe(response);
+  return true;
+}
+
+async function webFilePath(candidatePath: string, webDirectory: string): Promise<string | undefined> {
+  if (existsSync(candidatePath) && (await stat(candidatePath)).isFile()) {
+    return candidatePath;
+  }
+
+  const indexPath = join(webDirectory, "index.html");
+  return existsSync(indexPath) ? indexPath : undefined;
+}
+
+function contentTypeForPath(path: string): string {
+  switch (extname(path).toLowerCase()) {
+    case ".css":
+      return "text/css; charset=utf-8";
+    case ".html":
+      return "text/html; charset=utf-8";
+    case ".js":
+      return "text/javascript; charset=utf-8";
+    case ".json":
+      return "application/json; charset=utf-8";
+    case ".png":
+      return "image/png";
+    case ".svg":
+      return "image/svg+xml";
+    case ".webp":
+      return "image/webp";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+function websocketUrl(rawUrl: string, host: string, port: string): string {
+  const url = new URL(rawUrl);
+  const hostname = host === "0.0.0.0" ? "localhost" : url.hostname;
+  return `ws://${hostname}:${port}/ws`;
 }
 
 async function nodeRequestToFetchRequest(request: IncomingMessage): Promise<Request> {

@@ -26,6 +26,12 @@ coverage
 out/
 build
 dist
+artifacts/
+apps/cli/README.md
+apps/cli/README.ja.md
+apps/cli/LICENSE
+apps/cli/skills/
+apps/cli/web/
 
 
 # Debug

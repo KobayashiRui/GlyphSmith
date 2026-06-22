@@ -50,9 +50,6 @@
 	import PageThumbnail from '$lib/PageThumbnail.svelte';
 	import LayerRow, { type LayerItem } from './LayerRow.svelte';
 	import { onMount, tick } from 'svelte';
-	import type { PageData } from './$types';
-
-	let { data }: { data: PageData } = $props();
 
 	let canvas: HTMLCanvasElement;
 	let svgImportInput = $state<HTMLInputElement | undefined>();
@@ -174,18 +171,15 @@
 	);
 
 	function initialProjectFromData(): GlyphSmithProject {
-		return (
-			data.initialProject ??
-			createProject({
-				name: 'GlyphSmith Project',
-				width: 256,
-				height: 256
-			})
-		);
+		return createProject({
+			name: 'GlyphSmith Project',
+			width: 256,
+			height: 256
+		});
 	}
 
 	function initialSaveStatusFromData(): 'idle' | 'saved' {
-		return data.projectFile ? 'saved' : 'idle';
+		return 'idle';
 	}
 
 	function buildLayerItems(parent: Extract<GeometryNode, { type: 'group' }>, expandedIds: NodeId[], depth = 0): LayerItem[] {
@@ -2168,7 +2162,9 @@
 	}
 
 	function connectHostWebSocket() {
-		if (!data.hostWebSocketUrl) {
+		const hostWebSocketUrl = currentHostWebSocketUrl();
+
+		if (!hostWebSocketUrl) {
 			hostStatus = 'disabled';
 			return;
 		}
@@ -2176,7 +2172,7 @@
 		closingHostSocket = false;
 		hostStatus = 'connecting';
 
-		const socket = new WebSocket(data.hostWebSocketUrl);
+		const socket = new WebSocket(hostWebSocketUrl);
 		hostSocket = socket;
 
 		socket.onopen = () => {
@@ -2230,6 +2226,22 @@
 
 		hostSocket?.close();
 		hostSocket = undefined;
+	}
+
+	function currentHostWebSocketUrl() {
+		if (typeof window === 'undefined') {
+			return undefined;
+		}
+
+		if (import.meta.env.VITE_GLYPHSMITH_HOST_WS_URL) {
+			return import.meta.env.VITE_GLYPHSMITH_HOST_WS_URL;
+		}
+
+		if (import.meta.env.DEV) {
+			return `ws://${window.location.hostname}:6202/ws`;
+		}
+
+		return `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}/ws`;
 	}
 
 	function handleHostMessage(rawMessage: string) {
@@ -2299,8 +2311,7 @@
 	}
 
 	function markProjectChanged() {
-		if (!data.hostWebSocketUrl || !hostSocket || hostSocket.readyState !== WebSocket.OPEN) {
-			saveStatus = data.projectFile ? 'idle' : saveStatus;
+		if (!hostSocket || hostSocket.readyState !== WebSocket.OPEN) {
 			return;
 		}
 

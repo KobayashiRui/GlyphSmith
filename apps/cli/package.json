@@ -1,25 +1,33 @@
 {
   "name": "glyphsmith",
   "version": "0.1.0",
+  "license": "MIT",
   "type": "module",
   "bin": {
-    "glyphsmith": "./dist/index.js"
+    "glyphsmith": "dist/index.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "README.ja.md",
+    "LICENSE",
+    "skills",
+    "web"
+  ],
   "scripts": {
-    "build": "tsc",
+    "build": "node ../../scripts/build-cli.mjs",
     "check-types": "tsc --noEmit",
     "dev": "pnpm run build && node dist/index.js host --example playground",
-    "dev:icons": "pnpm run build && node dist/index.js host --example glyphsmith"
+    "dev:icons": "pnpm run build && node dist/index.js host --example glyphsmith",
+    "prepack": "pnpm -w run build:cli"
   },
   "devDependencies": {
-    "@repo/typescript-config": "workspace:*",
-    "@types/node": "^22",
-    "typescript": "5.9.2"
-  },
-  "dependencies": {
     "@glyphsmith/ast": "workspace:*",
     "@glyphsmith/mcp": "workspace:*",
     "@glyphsmith/svg": "workspace:*",
-    "hono": "^4.12.23"
+    "@repo/typescript-config": "workspace:*",
+    "@types/node": "^22",
+    "hono": "^4.12.23",
+    "typescript": "5.9.2"
   }
 }

@@ -43,11 +43,17 @@ pnpm install
 新規プロジェクトを開始します。
 
 ```sh
-pnpm --filter glyphsmith run build
-node apps/cli/dist/index.js my-logo
+npx glyphsmith my-logo
 ```
 
 これは `./my-logo.gs.json` を開きます。ファイルが存在しない場合、GlyphSmith が自動で作成します。
+
+このリポジトリから実行する場合:
+
+```sh
+pnpm run build:cli
+node apps/cli/dist/index.js my-logo
+```
 
 デフォルトの開発用プロジェクトを起動します。
 
@@ -85,6 +91,22 @@ apps/web/static/icons
 ```
 
 同じコマンドを再実行すると、生成済みの icon output は上書きされます。
+
+## Package
+
+公開用の CLI package を build します。
+
+```sh
+pnpm run build:cli
+```
+
+確認用の npm tarball を作成します。
+
+```sh
+pnpm run pack:cli
+```
+
+package は `artifacts/npm` に出力され、bundle 済み CLI、build 済み web UI、GlyphSmith skills を含みます。
 
 ## Agent Workflow
 

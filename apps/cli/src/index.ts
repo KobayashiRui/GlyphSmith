@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { cp, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { createServer as createNetServer } from "node:net";
@@ -18,6 +19,7 @@ const DEFAULT_HOST = "127.0.0.1";
 const DEV_BIND_HOST = "0.0.0.0";
 const DEV_PUBLIC_HOST = "localhost";
 const cliDirectory = fileURLToPath(new URL(".", import.meta.url));
+const packagedWebDirectory = resolve(cliDirectory, "../web");
 
 type CliCommand = "host" | "init" | "open";
 
@@ -64,9 +66,9 @@ async function main(): Promise<void> {
   }
 
   const projectFile = resolveProjectFile(options);
-  const store = new ProjectStore(projectFile);
 
   if (options.command === "init") {
+    const store = new ProjectStore(projectFile);
     store.close();
     console.log(`✓ Project created at ${projectFile}`);
     return;
@@ -75,6 +77,7 @@ async function main(): Promise<void> {
   if (options.command === "host") {
     const requestedHostPort = options.port ?? DEFAULT_HOST_PORT;
     const hostPort = await requireAvailablePort(requestedHostPort, new Set(), DEV_BIND_HOST);
+    const store = new ProjectStore(projectFile);
     const mcpUrl = `http://${DEV_PUBLIC_HOST}:${hostPort}/mcp`;
     const hostServer = startHostServer({
       host: DEV_BIND_HOST,
@@ -101,19 +104,24 @@ async function main(): Promise<void> {
   }
 
   const requestedPort = options.port ?? DEFAULT_PORT;
+  const packagedWeb = packagedWebDirectoryExists();
   const port = options.portFixed
     ? await requireAvailablePort(requestedPort)
     : await findAvailablePort(requestedPort);
-  const requestedHostPort = nextPort(port);
-  const hostPort = options.portFixed
-    ? await requireAvailablePort(requestedHostPort, new Set([port]))
-    : await findAvailablePort(requestedHostPort, new Set([port]));
+  const requestedHostPort = packagedWeb ? port : nextPort(port);
+  const hostPort = packagedWeb
+    ? port
+    : options.portFixed
+      ? await requireAvailablePort(requestedHostPort, new Set([port]))
+      : await findAvailablePort(requestedHostPort, new Set([port]));
+  const store = new ProjectStore(projectFile);
   const mcpUrl = `http://${DEFAULT_HOST}:${hostPort}/mcp`;
   const hostServer = startHostServer({
     host: DEFAULT_HOST,
     mcpUrl,
     port: hostPort,
-    store
+    store,
+    webDirectory: packagedWeb ? packagedWebDirectory : undefined
   });
 
   console.log(`✓ Project: ${projectFile}`);
@@ -127,11 +135,16 @@ async function main(): Promise<void> {
   console.log(`✓ Host running on ws://${DEFAULT_HOST}:${hostPort}/ws`);
   console.log(`✓ MCP running on ${mcpUrl}`);
 
+  if (packagedWeb) {
+    return;
+  }
+
   const child = spawn("pnpm", ["--filter", "web", "dev", "--host", DEFAULT_HOST], {
     cwd: resolve(cliDirectory, "../../.."),
     env: {
       ...process.env,
       GLYPHSMITH_HOST_WS_URL: `ws://${DEFAULT_HOST}:${hostPort}/ws`,
+      VITE_GLYPHSMITH_HOST_WS_URL: `ws://${DEFAULT_HOST}:${hostPort}/ws`,
       GLYPHSMITH_PROJECT_FILE: projectFile,
       PORT: port
     },
@@ -152,6 +165,10 @@ async function main(): Promise<void> {
 
   process.once("SIGINT", shutdown);
   process.once("SIGTERM", shutdown);
+}
+
+function packagedWebDirectoryExists(): boolean {
+  return existsSync(resolve(packagedWebDirectory, "index.html"));
 }
 
 async function findAvailablePort(startPort: string, reservedPorts = new Set<string>(), host = DEFAULT_HOST): Promise<string> {
