@@ -19,6 +19,7 @@
   "dependencies": {
     "@glyphsmith/ast": "workspace:*",
     "@glyphsmith/mcp": "workspace:*",
+    "@glyphsmith/svg": "workspace:*",
     "hono": "^4.12.23"
   }
 }

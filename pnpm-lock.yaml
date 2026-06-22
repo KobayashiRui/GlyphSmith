@@ -26,6 +26,9 @@ importers:
       '@glyphsmith/mcp':
         specifier: workspace:*
         version: link:../../packages/mcp
+      '@glyphsmith/svg':
+        specifier: workspace:*
+        version: link:../../packages/svg
       hono:
         specifier: ^4.12.23
         version: 4.12.23

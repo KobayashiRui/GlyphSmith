@@ -6,7 +6,9 @@ import { homedir } from "node:os";
 import { createServer as createNetServer } from "node:net";
 import { basename, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isGlyphSmithProject, type GlyphSmithProject } from "@glyphsmith/ast";
 import { mcpTools } from "@glyphsmith/mcp";
+import { exportToSvg } from "@glyphsmith/svg";
 import { ProjectStore } from "./project-store.js";
 import { startHostServer } from "./server.js";
 
@@ -28,6 +30,14 @@ type CliOptions = {
   projectFile?: string;
 };
 
+type ExportOptions = {
+  clean: boolean;
+  example?: string;
+  help: boolean;
+  out?: string;
+  projectFile?: string;
+};
+
 async function main(): Promise<void> {
   const rawArgs = process.argv.slice(2);
 
@@ -38,6 +48,11 @@ async function main(): Promise<void> {
 
   if (rawArgs[0] === "skills") {
     await handleSkillsCommand(rawArgs.slice(1));
+    return;
+  }
+
+  if (rawArgs[0] === "export") {
+    await handleExportCommand(rawArgs.slice(1));
     return;
   }
 
@@ -282,6 +297,132 @@ function parseArgs(args: string[]): CliOptions {
   }
 
   return options;
+}
+
+async function handleExportCommand(args: string[]): Promise<void> {
+  const options = parseExportArgs(args);
+
+  if (options.help) {
+    printExportHelp();
+    return;
+  }
+
+  const projectFile = resolveProjectFile(options);
+  const project = await readProject(projectFile);
+  const outDir = resolve(process.cwd(), options.out ?? `${projectFileStem(projectFile)}-svg`);
+  const usedNames = new Map<string, number>();
+
+  if (options.clean) {
+    await rm(outDir, { recursive: true, force: true });
+  }
+
+  await mkdir(outDir, { recursive: true });
+
+  for (const page of project.pages) {
+    const basename = uniqueExportFilename(fileSafeName(page.name || page.id), usedNames);
+    await writeFile(resolve(outDir, `${basename}.svg`), exportToSvg(page.document), "utf8");
+  }
+
+  console.log(`✓ Exported ${project.pages.length} SVG file${project.pages.length === 1 ? "" : "s"} to ${outDir}`);
+}
+
+function parseExportArgs(args: string[]): ExportOptions {
+  const options: ExportOptions = {
+    clean: false,
+    example: undefined,
+    help: false,
+    out: undefined,
+    projectFile: undefined
+  };
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index]!;
+
+    if (arg === "--") {
+      continue;
+    }
+
+    if (arg === "--help" || arg === "-h") {
+      options.help = true;
+      continue;
+    }
+
+    if (arg === "--clean") {
+      options.clean = true;
+      continue;
+    }
+
+    if (arg === "--out") {
+      const value = args[index + 1];
+
+      if (!value || value.startsWith("-")) {
+        throw new Error("--out requires a value.");
+      }
+
+      options.out = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--out=")) {
+      options.out = arg.slice("--out=".length);
+      continue;
+    }
+
+    if (arg === "--example") {
+      const value = args[index + 1];
+
+      if (!value || value.startsWith("-")) {
+        throw new Error("--example requires a value.");
+      }
+
+      options.example = value;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--example=")) {
+      options.example = arg.slice("--example=".length);
+      continue;
+    }
+
+    if (arg.startsWith("-")) {
+      throw new Error(`Unknown export option: ${arg}`);
+    }
+
+    if (options.projectFile !== undefined) {
+      throw new Error(`Unexpected export argument: ${arg}`);
+    }
+
+    options.projectFile = arg;
+  }
+
+  return options;
+}
+
+async function readProject(projectFile: string): Promise<GlyphSmithProject> {
+  const project = JSON.parse(await readFile(projectFile, "utf8")) as unknown;
+
+  if (!isGlyphSmithProject(project)) {
+    throw new Error(`Invalid GlyphSmith project: ${projectFile}`);
+  }
+
+  return project;
+}
+
+function projectFileStem(projectFile: string): string {
+  return basename(projectFile).replace(/\.gs\.json$/i, "") || "glyphsmith-project";
+}
+
+function fileSafeName(value: string): string {
+  return value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "") || "glyphsmith";
+}
+
+function uniqueExportFilename(basename: string, usedNames: Map<string, number>): string {
+  const count = usedNames.get(basename) ?? 0;
+  usedNames.set(basename, count + 1);
+
+  return count === 0 ? basename : `${basename}-${count + 1}`;
 }
 
 async function handleMcpCommand(args: string[]): Promise<void> {
@@ -616,6 +757,8 @@ Usage:
   glyphsmith host [project]
   glyphsmith host --example <name>
   glyphsmith init [project]
+  glyphsmith export [project] [--out <dir>] [--clean]
+  glyphsmith export --example <name> [--out <dir>] [--clean]
   glyphsmith mcp install <codex|claude> --url <mcp-url> [--project <project-dir>]
   glyphsmith skills install <codex|claude> [--project <project-dir>] [--force]
 
@@ -626,9 +769,23 @@ Project paths may omit .gs.json:
 Options:
   --port <port>     Web UI port for open mode. Host/MCP port for host mode.
                     Defaults to ${DEFAULT_PORT} for open mode and ${DEFAULT_HOST_PORT} for host mode.
-  --example <name>  Open examples/<name>.gs.json.
+  --example <name>  Use examples/<name>.gs.json.
 
 Explicit --port values are always treated as fixed ports.
+`);
+}
+
+function printExportHelp(): void {
+  console.log(`GlyphSmith SVG Export
+
+Usage:
+  glyphsmith export [project] [--out <dir>] [--clean]
+  glyphsmith export --example <name> [--out <dir>] [--clean]
+
+Options:
+  --out <dir>      Output directory. Defaults to <project-stem>-svg.
+  --clean          Remove the output directory before writing SVG files.
+  --example <name> Export examples/<name>.gs.json.
 `);
 }
 

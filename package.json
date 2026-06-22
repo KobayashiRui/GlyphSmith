@@ -5,6 +5,7 @@
     "build": "turbo run build",
     "dev": "turbo run dev --filter=web --filter=glyphsmith",
     "dev:icons": "turbo run dev:icons --filter=web --filter=glyphsmith",
+    "export:icons": "pnpm --filter glyphsmith run build && node apps/cli/dist/index.js export --example glyphsmith --out apps/web/static/icons --clean",
     "lint": "turbo run lint",
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "check-types": "turbo run check-types"

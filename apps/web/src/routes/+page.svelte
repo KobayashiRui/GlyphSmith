@@ -127,6 +127,22 @@
 
 	const strokeLinecapOptions = ['butt', 'round', 'square'] as const;
 	const strokeLinejoinOptions = ['miter', 'round', 'bevel'] as const;
+	const iconPaths = {
+		app: '/icons/App-Icon.svg',
+		arc: '/icons/Arc.svg',
+		basis: '/icons/Basis.svg',
+		catmullRom: '/icons/Catmull.svg',
+		cubic: '/icons/Cubic-Bezier.svg',
+		edit: '/icons/Edit.svg',
+		ellipse: '/icons/Ellipse.svg',
+		line: '/icons/Line.svg',
+		rect: '/icons/Rect.svg',
+		redo: '/icons/Redo.svg',
+		select: '/icons/Select.svg',
+		text: '/icons/Text.svg',
+		triangle: '/icons/Triangle.svg',
+		undo: '/icons/Undo.svg'
+	} as const;
 
 	const activePage = $derived(project.pages.find((page) => page.id === project.activePageId) ?? project.pages[0]!);
 	const geometryDocument = $derived(activePage.document);
@@ -2835,7 +2851,7 @@
 <div class="app-shell">
 	<header class="topbar">
 		<div class="topbar-brand">
-			<div class="brand-mark">G</div>
+			<img alt="" aria-hidden="true" class="brand-mark" src={iconPaths.app} />
 			{#if renamingProjectName}
 				<input
 					bind:this={projectNameInput}
@@ -2847,29 +2863,59 @@
 					onkeydown={handleProjectNameKeyDown}
 				/>
 			{:else}
-				<div class="project-name-display">
+				<button
+					aria-label="Rename project"
+					class="project-name-display"
+					title="Rename project"
+					type="button"
+					onclick={startProjectNameRename}
+				>
 					<h1>{project.name}</h1>
-					<button class="project-name-edit-button" type="button" onclick={startProjectNameRename}>Edit</button>
-				</div>
+					<img alt="" aria-hidden="true" src={iconPaths.edit} />
+				</button>
 			{/if}
 		</div>
 
 		<div class="history-controls" aria-label="History">
-			<button type="button" onclick={undo} disabled={undoStack.length === 0}>Undo</button>
-			<button type="button" onclick={redo} disabled={redoStack.length === 0}>Redo</button>
+			<button aria-label="Undo" title="Undo" type="button" onclick={undo} disabled={undoStack.length === 0}>
+				<img alt="" aria-hidden="true" src={iconPaths.undo} />
+			</button>
+			<button aria-label="Redo" title="Redo" type="button" onclick={redo} disabled={redoStack.length === 0}>
+				<img alt="" aria-hidden="true" src={iconPaths.redo} />
+			</button>
 		</div>
 
 		<div class="toolbar" aria-label="Tools">
-			<button class:active={tool === 'select'} type="button" onclick={() => setTool('select')}>Select</button>
-			<button class:active={tool === 'rect'} type="button" onclick={() => setTool('rect')}>Rect</button>
-			<button class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')}>Ellipse</button>
-			<button class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>Triangle</button>
-			<button class:active={tool === 'text'} type="button" onclick={() => setTool('text')}>Text</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>Line</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>Arc</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>Cubic Bezier</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')}>Catmull</button>
-			<button class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')}>Basis</button>
+			<button aria-label="Select" title="Select" class:active={tool === 'select'} type="button" onclick={() => setTool('select')}>
+				<img alt="" aria-hidden="true" src={iconPaths.select} />
+			</button>
+			<button aria-label="Rectangle" title="Rectangle" class:active={tool === 'rect'} type="button" onclick={() => setTool('rect')}>
+				<img alt="" aria-hidden="true" src={iconPaths.rect} />
+			</button>
+			<button aria-label="Ellipse" title="Ellipse" class:active={tool === 'ellipse'} type="button" onclick={() => setTool('ellipse')}>
+				<img alt="" aria-hidden="true" src={iconPaths.ellipse} />
+			</button>
+			<button aria-label="Triangle" title="Triangle" class:active={tool === 'triangle'} type="button" onclick={() => setTool('triangle')}>
+				<img alt="" aria-hidden="true" src={iconPaths.triangle} />
+			</button>
+			<button aria-label="Text" title="Text" class:active={tool === 'text'} type="button" onclick={() => setTool('text')}>
+				<img alt="" aria-hidden="true" src={iconPaths.text} />
+			</button>
+			<button aria-label="Line" title="Line" class:active={tool === 'path' && pathSegmentMode === 'line'} type="button" onclick={() => setLineTool('line')}>
+				<img alt="" aria-hidden="true" src={iconPaths.line} />
+			</button>
+			<button aria-label="Arc" title="Arc" class:active={tool === 'path' && pathSegmentMode === 'arc'} type="button" onclick={() => setLineTool('arc')}>
+				<img alt="" aria-hidden="true" src={iconPaths.arc} />
+			</button>
+			<button aria-label="Cubic Bezier" title="Cubic Bezier" class:active={tool === 'path' && pathSegmentMode === 'cubic'} type="button" onclick={() => setLineTool('cubic')}>
+				<img alt="" aria-hidden="true" src={iconPaths.cubic} />
+			</button>
+			<button aria-label="Catmull" title="Catmull" class:active={tool === 'path' && pathSegmentMode === 'catmullRom'} type="button" onclick={() => setLineTool('catmullRom')}>
+				<img alt="" aria-hidden="true" src={iconPaths.catmullRom} />
+			</button>
+			<button aria-label="Basis" title="Basis" class:active={tool === 'path' && pathSegmentMode === 'basis'} type="button" onclick={() => setLineTool('basis')}>
+				<img alt="" aria-hidden="true" src={iconPaths.basis} />
+			</button>
 		</div>
 
 		<div class="topbar-status">
