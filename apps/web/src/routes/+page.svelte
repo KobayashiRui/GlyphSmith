@@ -253,9 +253,27 @@
 				return;
 			}
 
+			if (layerContextMenu && event.key === 'Escape') {
+				event.preventDefault();
+				closeLayerContextMenu();
+				return;
+			}
+
 			if (settingsOpen && event.key === 'Escape') {
 				event.preventDefault();
 				closeProjectSettings();
+				return;
+			}
+
+			if (svgImportOpen && event.key === 'Escape') {
+				event.preventDefault();
+				svgImportOpen = false;
+				return;
+			}
+
+			if (svgExportOpen && event.key === 'Escape') {
+				event.preventDefault();
+				svgExportOpen = false;
 				return;
 			}
 
@@ -270,12 +288,8 @@
 
 			if (event.key === 'Escape') {
 				event.preventDefault();
-				editingHandle = undefined;
-				dragging = false;
-				finishPathDrawing();
-				if (editingGroupId) {
-					exitGroupEdit();
-				}
+				handleEscapeKey();
+				return;
 			}
 
 			if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') {
@@ -350,6 +364,51 @@
 
 		if (tool !== 'path') {
 			setTool('path');
+		}
+	}
+
+	function handleEscapeKey() {
+		if (editingHandle || dragging || panning) {
+			editingHandle = undefined;
+			dragging = false;
+			panning = false;
+			lastDragPoint = undefined;
+			lastPanPoint = undefined;
+			blurActiveElement();
+			return;
+		}
+
+		if (editingGroupId) {
+			exitGroupEdit();
+			blurActiveElement();
+			return;
+		}
+
+		if (tool === 'path') {
+			if (draftStart || draftEnd || activePathNodeId || snapTarget) {
+				finishPathDrawing();
+				blurActiveElement();
+				return;
+			}
+
+			setTool('select');
+			blurActiveElement();
+			return;
+		}
+
+		if (tool === 'text' || isShapeTool(tool)) {
+			setTool('select');
+			blurActiveElement();
+			return;
+		}
+
+		cancelDraft();
+		blurActiveElement();
+	}
+
+	function blurActiveElement() {
+		if (document.activeElement instanceof HTMLElement) {
+			document.activeElement.blur();
 		}
 	}
 
