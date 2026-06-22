@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="docs/images/app-icon.svg" alt="GlyphSmith" width="72" height="72" />
+  <img src="https://raw.githubusercontent.com/KobayashiRui/GlyphSmith/main/docs/images/app-icon.svg" alt="GlyphSmith" width="72" height="72" />
 </p>
 
 <h1 align="center">GlyphSmith</h1>
@@ -9,14 +9,14 @@
 </p>
 
 <p align="center">
-  English | <a href="README.ja.md">日本語</a>
+  English | <a href="https://github.com/KobayashiRui/GlyphSmith/blob/main/README.ja.md">日本語</a>
 </p>
 
 GlyphSmith is an SVG editor designed for both manual editing and AI-assisted editing.
 Instead of asking agents to rewrite whole SVG strings, GlyphSmith imports SVG into a Geometry AST,
 applies targeted patch operations, and exports SVG only at the boundary.
 
-![GlyphSmith editor](docs/images/editor.png)
+![GlyphSmith editor](https://raw.githubusercontent.com/KobayashiRui/GlyphSmith/main/docs/images/editor.png)
 
 ```txt
 SVG

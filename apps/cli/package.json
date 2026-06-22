@@ -1,6 +1,7 @@
 {
   "name": "glyphsmith",
   "version": "0.1.0",
+  "description": "Agent-native SVG editor powered by Geometry AST and patch-based editing.",
   "license": "MIT",
   "type": "module",
   "bin": {
@@ -14,6 +15,22 @@
     "skills",
     "web"
   ],
+  "keywords": [
+    "svg",
+    "editor",
+    "geometry",
+    "mcp",
+    "ai"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/KobayashiRui/GlyphSmith.git",
+    "directory": "apps/cli"
+  },
+  "bugs": {
+    "url": "https://github.com/KobayashiRui/GlyphSmith/issues"
+  },
+  "homepage": "https://github.com/KobayashiRui/GlyphSmith#readme",
   "scripts": {
     "build": "node ../../scripts/build-cli.mjs",
     "check-types": "tsc --noEmit",
