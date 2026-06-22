@@ -2085,9 +2085,9 @@
 		const usedNames = new Map<string, number>();
 		const entries: Record<string, Uint8Array> = {};
 
-		pages.forEach((page, index) => {
+		pages.forEach((page) => {
 			const basename = uniqueExportFilename(
-				`${String(index + 1).padStart(2, '0')}-${fileSafeName(page.name || page.id)}`,
+				fileSafeName(page.name || page.id),
 				usedNames
 			);
 			entries[`${projectSlug}/${basename}.svg`] = strToU8(exportToSvg(page.document));
