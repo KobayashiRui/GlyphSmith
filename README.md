@@ -9,6 +9,14 @@
 </p>
 
 <p align="center">
+  <a href="https://www.npmjs.com/package/glyphsmith"><img src="https://img.shields.io/npm/v/glyphsmith?style=flat-square" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/glyphsmith"><img src="https://img.shields.io/npm/dm/glyphsmith?style=flat-square" alt="npm downloads" /></a>
+  <a href="https://github.com/KobayashiRui/GlyphSmith/blob/main/LICENSE"><img src="https://img.shields.io/npm/l/glyphsmith?style=flat-square" alt="license" /></a>
+  <img src="https://img.shields.io/node/v/glyphsmith?style=flat-square" alt="node version" />
+  <img src="https://img.shields.io/badge/pnpm-9.0.0-F69220?style=flat-square&logo=pnpm&logoColor=white" alt="pnpm 9.0.0" />
+</p>
+
+<p align="center">
   English | <a href="https://github.com/KobayashiRui/GlyphSmith/blob/main/README.ja.md">日本語</a>
 </p>
 
@@ -27,6 +35,10 @@ Geometry AST
 ↓ Export
 SVG
 ```
+
+## Demo
+
+![GlyphSmith demo](https://raw.githubusercontent.com/KobayashiRui/GlyphSmith/main/docs/images/glyphsmith-demo.gif)
 
 ## Status
 
@@ -122,6 +134,7 @@ Current README assets:
 
 ```txt
 docs/images/app-icon.svg
+docs/images/glyphsmith-demo.gif
 docs/images/editor.png
 ```
 
